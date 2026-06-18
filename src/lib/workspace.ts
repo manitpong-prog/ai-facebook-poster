@@ -26,20 +26,45 @@ function createWorkspaceName(user: WorkspaceUser) {
 }
 
 async function createDefaultWritingProfile(workspaceId: string) {
-  await db.insert(writingProfiles).values({
-    workspaceId,
-    name: "สไตล์หลักของฉัน",
-    tone: "เป็นกันเอง อ่านง่าย เหมือนเจ้าของเพจเล่าเอง",
-    targetAudience: "เจ้าของธุรกิจ เจ้าของเพจ และคนที่สนใจเนื้อหาของเพจ",
-    rules:
-      "เขียนภาษาไทย ย่อหน้าสั้น อ่านง่ายบนมือถือ ไม่ขายของแรง ไม่ใช้คำเกินจริง ความยาวไม่เกิน 300 คำ",
-    favoriteWords: "ลองเริ่มจาก, ค่อย ๆ ทำ, เอาไปปรับใช้ได้",
-    bannedWords: "ปัง, รวยแน่นอน, การันตี, เปลี่ยนชีวิต",
-    callToAction: "ถ้าสนใจ ลองทักมาคุยกันได้ครับ",
-    samplePosts: "",
-    maxWords: 300,
-    isDefault: true,
-  });
+  const [profile] = await db
+    .insert(writingProfiles)
+    .values({
+      workspaceId,
+      name: "สไตล์หลักของฉัน",
+      tone: "เป็นกันเอง อ่านง่าย เหมือนเจ้าของเพจเล่าเอง",
+      targetAudience: "เจ้าของธุรกิจ เจ้าของเพจ และคนที่สนใจเนื้อหาของเพจ",
+      rules:
+        "เขียนภาษาไทย ย่อหน้าสั้น อ่านง่ายบนมือถือ ไม่ขายของแรง ไม่ใช้คำเกินจริง ความยาวไม่เกิน 300 คำ",
+      favoriteWords: "ลองเริ่มจาก, ค่อย ๆ ทำ, เอาไปปรับใช้ได้",
+      bannedWords: "ปัง, รวยแน่นอน, การันตี, เปลี่ยนชีวิต",
+      callToAction: "ถ้าสนใจ ลองทักมาคุยกันได้ครับ",
+      samplePosts: "",
+      maxWords: 300,
+      isDefault: true,
+    })
+    .returning();
+
+  if (!profile) {
+    throw new Error("Failed to create default writing profile");
+  }
+
+  return profile;
+}
+
+export async function ensureDefaultWritingProfile(workspaceId: string) {
+  const existingProfiles = await db
+    .select()
+    .from(writingProfiles)
+    .where(eq(writingProfiles.workspaceId, workspaceId))
+    .limit(1);
+
+  const existingProfile = existingProfiles[0];
+
+  if (existingProfile) {
+    return existingProfile;
+  }
+
+  return createDefaultWritingProfile(workspaceId);
 }
 
 export async function ensureDefaultWorkspace(user: WorkspaceUser) {
@@ -57,6 +82,7 @@ export async function ensureDefaultWorkspace(user: WorkspaceUser) {
   const existingMembership = existingMemberships[0];
 
   if (existingMembership) {
+    await ensureDefaultWritingProfile(existingMembership.workspaceId);
     return existingMembership;
   }
 

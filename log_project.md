@@ -234,3 +234,55 @@ npm run dev
 5. Run npm run dev
 6. Test register, login, dashboard, and logout
 7. Commit + Push with GitHub Desktop after successful test
+
+---
+
+## 2026-06-18 - Writing Style Settings Page
+
+### What was done
+- Added a reusable Dashboard layout with protected auth check
+- Added Dashboard navigation component
+- Added Writing Style settings page at `/dashboard/style`
+- Added server action to update the default writing profile in Neon
+- Updated Dashboard page to use the shared layout and link to Writing Style settings
+- Improved workspace helper to ensure a default writing profile exists even if the workspace already exists
+
+### Files created
+- src/app/dashboard/layout.tsx
+- src/app/dashboard/style/page.tsx
+- src/app/dashboard/style/actions.ts
+- src/components/dashboard/dashboard-nav.tsx
+
+### Files updated
+- src/app/dashboard/page.tsx
+- src/lib/workspace.ts
+- log_project.md
+
+### Commands to run after replacing files
+```powershell
+npm install
+npm run dev
+```
+
+### Database / Migration
+- No new database tables were added in this step
+- No Drizzle migration is required for this step
+- Existing `writing_profiles` table is used
+
+### Current status
+- User can open `/dashboard/style`
+- User can edit the default writing style
+- Style fields are saved to Neon through a server action
+- Dashboard shows the latest default writing style
+
+### Known issues
+- Create Post form is not implemented yet
+- OpenAI integration is not implemented yet
+- Facebook API integration is not implemented yet
+- Scheduled posts are not implemented yet
+
+### Next steps
+1. Build Create Post form
+2. Save draft post to database
+3. Add Preview page
+4. Connect OpenAI Responses API to generate posts using the saved Writing Style

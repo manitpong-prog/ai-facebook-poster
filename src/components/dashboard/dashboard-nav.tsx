@@ -1,0 +1,49 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+const navItems = [
+  {
+    href: "/dashboard",
+    label: "Dashboard",
+    description: "ภาพรวมระบบ",
+  },
+  {
+    href: "/dashboard/style",
+    label: "Writing Style",
+    description: "สไตล์การเขียน",
+  },
+];
+
+export function DashboardNav() {
+  const pathname = usePathname();
+
+  return (
+    <nav className="flex gap-2 overflow-x-auto border-b border-slate-800 px-6 py-3 lg:flex-col lg:border-b-0 lg:px-0 lg:py-0">
+      {navItems.map((item) => {
+        const isActive =
+          item.href === "/dashboard"
+            ? pathname === item.href
+            : pathname.startsWith(item.href);
+
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={
+              isActive
+                ? "min-w-fit rounded-xl border border-blue-400/40 bg-blue-500/15 px-4 py-3 text-sm text-blue-100"
+                : "min-w-fit rounded-xl border border-transparent px-4 py-3 text-sm text-slate-300 hover:border-slate-700 hover:bg-slate-900 hover:text-white"
+            }
+          >
+            <div className="font-semibold">{item.label}</div>
+            <div className="mt-1 hidden text-xs text-slate-400 sm:block">
+              {item.description}
+            </div>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
