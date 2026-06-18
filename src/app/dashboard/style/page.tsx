@@ -1,33 +1,56 @@
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { auth } from "@/lib/auth";
-import {
-  ensureDefaultWorkspace,
-  ensureDefaultWritingProfile,
-} from "@/lib/workspace";
+import { DashboardLoadError } from "@/components/dashboard/dashboard-load-error";
+import { getDashboardContext } from "@/lib/dashboard-context";
+import { getSessionErrorMessage } from "@/lib/session";
+import { ensureDefaultWritingProfile } from "@/lib/workspace";
 
 import { updateWritingStyleAction } from "./actions";
 
 type StylePageProps = {
   searchParams?: Promise<{
     updated?: string;
+    error?: string;
   }>;
 };
 
 export default async function WritingStylePage({ searchParams }: StylePageProps) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const { session, currentMembership, error } = await getDashboardContext();
+
+  if (error) {
+    return (
+      <DashboardLoadError
+        title="โหลดหน้าตั้งค่าสไตล์ไม่สำเร็จ"
+        technicalMessage={getSessionErrorMessage(error)}
+      />
+    );
+  }
 
   if (!session) {
     redirect("/login");
   }
 
-  const currentMembership = await ensureDefaultWorkspace(session.user);
-  const profile = await ensureDefaultWritingProfile(currentMembership.workspaceId);
+  if (!currentMembership) {
+    return <DashboardLoadError title="ไม่พบ Workspace" />;
+  }
+
+  let profile;
+
+  try {
+    profile = await ensureDefaultWritingProfile(currentMembership.workspaceId);
+  } catch (profileError) {
+    return (
+      <DashboardLoadError
+        title="โหลดสไตล์การเขียนไม่สำเร็จ"
+        technicalMessage={getSessionErrorMessage(profileError)}
+      />
+    );
+  }
+
   const params = await searchParams;
   const wasUpdated = params?.updated === "1";
+  const saveError =
+    params?.error === "save_failed" || params?.error === "session_failed";
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -39,11 +62,19 @@ export default async function WritingStylePage({ searchParams }: StylePageProps)
           </p>
         </div>
 
-        {wasUpdated ? (
-          <div className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
-            บันทึกสไตล์การเขียนแล้ว
-          </div>
-        ) : null}
+        <div className="flex flex-col gap-3">
+          {wasUpdated ? (
+            <div className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+              บันทึกสไตล์การเขียนแล้ว
+            </div>
+          ) : null}
+
+          {saveError ? (
+            <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+              บันทึกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <form

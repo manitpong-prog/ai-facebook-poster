@@ -2,12 +2,11 @@
 
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { db } from "@/db";
 import { writingProfiles } from "@/db/schema";
-import { auth } from "@/lib/auth";
+import { getSessionResult } from "@/lib/session";
 import {
   ensureDefaultWorkspace,
   ensureDefaultWritingProfile,
@@ -34,35 +33,42 @@ function getMaxWords(formData: FormData) {
 }
 
 export async function updateWritingStyleAction(formData: FormData) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const sessionResult = await getSessionResult();
 
-  if (!session) {
+  if (sessionResult.error) {
+    redirect("/dashboard/style?error=session_failed");
+  }
+
+  if (!sessionResult.session) {
     redirect("/login");
   }
 
-  const currentMembership = await ensureDefaultWorkspace(session.user);
-  const profile = await ensureDefaultWritingProfile(
-    currentMembership.workspaceId,
-  );
+  try {
+    const currentMembership = await ensureDefaultWorkspace(sessionResult.session.user);
+    const profile = await ensureDefaultWritingProfile(
+      currentMembership.workspaceId,
+    );
 
-  await db
-    .update(writingProfiles)
-    .set({
-      name: getTextValue(formData, "name") || "สไตล์หลักของฉัน",
-      tone: getTextValue(formData, "tone"),
-      targetAudience: getTextValue(formData, "targetAudience"),
-      rules: getTextValue(formData, "rules"),
-      favoriteWords: getTextValue(formData, "favoriteWords"),
-      bannedWords: getTextValue(formData, "bannedWords"),
-      callToAction: getTextValue(formData, "callToAction"),
-      samplePosts: getTextValue(formData, "samplePosts"),
-      maxWords: getMaxWords(formData),
-      isDefault: true,
-      updatedAt: new Date(),
-    })
-    .where(eq(writingProfiles.id, profile.id));
+    await db
+      .update(writingProfiles)
+      .set({
+        name: getTextValue(formData, "name") || "สไตล์หลักของฉัน",
+        tone: getTextValue(formData, "tone"),
+        targetAudience: getTextValue(formData, "targetAudience"),
+        rules: getTextValue(formData, "rules"),
+        favoriteWords: getTextValue(formData, "favoriteWords"),
+        bannedWords: getTextValue(formData, "bannedWords"),
+        callToAction: getTextValue(formData, "callToAction"),
+        samplePosts: getTextValue(formData, "samplePosts"),
+        maxWords: getMaxWords(formData),
+        isDefault: true,
+        updatedAt: new Date(),
+      })
+      .where(eq(writingProfiles.id, profile.id));
+  } catch (error) {
+    console.error("Failed to update writing style:", error);
+    redirect("/dashboard/style?error=save_failed");
+  }
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/style");

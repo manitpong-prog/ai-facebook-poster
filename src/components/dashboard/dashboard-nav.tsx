@@ -10,11 +10,37 @@ const navItems = [
     description: "ภาพรวมระบบ",
   },
   {
+    href: "/dashboard/posts/new",
+    label: "Create Post",
+    description: "สร้าง Draft ใหม่",
+  },
+  {
+    href: "/dashboard/posts",
+    label: "Posts",
+    description: "รายการโพสต์",
+  },
+  {
     href: "/dashboard/style",
     label: "Writing Style",
     description: "สไตล์การเขียน",
   },
 ];
+
+function isNavItemActive(pathname: string, href: string) {
+  if (href === "/dashboard") {
+    return pathname === href;
+  }
+
+  if (href === "/dashboard/posts/new") {
+    return pathname === href;
+  }
+
+  if (href === "/dashboard/posts") {
+    return pathname === href || /^\/dashboard\/posts\/[^/]+$/.test(pathname);
+  }
+
+  return pathname.startsWith(href);
+}
 
 export function DashboardNav() {
   const pathname = usePathname();
@@ -22,10 +48,7 @@ export function DashboardNav() {
   return (
     <nav className="flex gap-2 overflow-x-auto border-b border-slate-800 px-6 py-3 lg:flex-col lg:border-b-0 lg:px-0 lg:py-0">
       {navItems.map((item) => {
-        const isActive =
-          item.href === "/dashboard"
-            ? pathname === item.href
-            : pathname.startsWith(item.href);
+        const isActive = isNavItemActive(pathname, item.href);
 
         return (
           <Link

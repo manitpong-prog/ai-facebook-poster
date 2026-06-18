@@ -1,5 +1,5 @@
-import { neon } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-http";
+import postgres from "postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
 
 import * as schema from "./schema";
 
@@ -9,9 +9,25 @@ if (!databaseUrl) {
   throw new Error("DATABASE_URL is not set");
 }
 
-const sql = neon(databaseUrl);
+declare global {
+  // Keep one local dev connection client across hot reloads.
+  // This avoids creating many short-lived clients when Next.js reloads files.
+  // eslint-disable-next-line no-var
+  var postgresClient: ReturnType<typeof postgres> | undefined;
+}
 
-export const db = drizzle({
-  client: sql,
-  schema,
-});
+const client =
+  globalThis.postgresClient ??
+  postgres(databaseUrl, {
+    connect_timeout: 20,
+    idle_timeout: 20,
+    max: 1,
+    prepare: false,
+    ssl: "require",
+  });
+
+if (process.env.NODE_ENV !== "production") {
+  globalThis.postgresClient = client;
+}
+
+export const db = drizzle(client, { schema });

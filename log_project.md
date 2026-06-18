@@ -286,3 +286,115 @@ npm run dev
 2. Save draft post to database
 3. Add Preview page
 4. Connect OpenAI Responses API to generate posts using the saved Writing Style
+
+---
+
+## 2026-06-18 - Create Post Draft Flow
+
+### What was done
+- Added Create Post page for entering a topic and optional per-post style instructions
+- Added server action to save a new post as a Draft in Neon
+- Added Posts list page to view recent posts in the current workspace
+- Added Post detail page to review a saved Draft
+- Updated Dashboard navigation with Create Post and Posts menu items
+- Updated Dashboard home card to link to Create Post and Posts list
+- Kept this step database-compatible with the existing `posts` table; no new migration required
+
+### Files created
+- src/app/dashboard/posts/new/page.tsx
+- src/app/dashboard/posts/new/actions.ts
+- src/app/dashboard/posts/page.tsx
+- src/app/dashboard/posts/[postId]/page.tsx
+
+### Files updated
+- src/components/dashboard/dashboard-nav.tsx
+- src/app/dashboard/page.tsx
+- log_project.md
+
+### Commands to run after applying this ZIP
+```powershell
+cd $env:USERPROFILE\Desktop\ai-facebook-poster
+npm install
+npm run dev
+```
+
+### Database / Migration
+- No schema changes
+- No migration required
+- Uses existing `posts` table and existing `writing_profiles` table
+
+### Current status
+- User can create a Draft post from `/dashboard/posts/new`
+- Draft post is saved in Neon with status `draft` and publish mode `draft`
+- User can view saved posts at `/dashboard/posts`
+- User can open a Draft detail page at `/dashboard/posts/[postId]`
+- Draft is linked to the user's default writing profile
+- OpenAI generation is not connected yet
+- Facebook publishing is not connected yet
+
+### Known issues
+- Draft editing is not implemented yet
+- Draft deletion/cancel is not implemented yet
+- AI-generated content preview is not implemented yet
+- Publish now and schedule are not implemented yet
+
+### Next steps
+1. Add OpenAI Responses API integration
+2. Add Generate with AI button on Draft detail page
+3. Save generated text back to the `posts.generated_text` column
+4. Add manual edit generated text flow
+5. Add Facebook Page settings and publish-now flow
+
+---
+
+## 2026-06-18 - Step 16.1 Neon Session Stability Patch
+
+### What was done
+- Switched the app database runtime connection from Neon HTTP driver to `postgres` + `drizzle-orm/postgres-js`.
+- Kept a single Postgres client during local development hot reloads to reduce repeated short-lived connections.
+- Added cached session/dashboard context helpers to avoid repeated `auth.api.getSession()` calls in the same request.
+- Added user-friendly Dashboard load error UI instead of allowing Better Auth API errors to crash the page.
+- Added try/catch handling around dashboard data loading and post/style server actions.
+- Improved database health check route to return a clear JSON error when the database is temporarily unreachable.
+
+### Files created
+- src/lib/session.ts
+- src/lib/dashboard-context.ts
+- src/components/dashboard/dashboard-load-error.tsx
+
+### Files updated
+- src/db/index.ts
+- src/app/api/health/db/route.ts
+- src/app/dashboard/layout.tsx
+- src/app/dashboard/page.tsx
+- src/app/dashboard/style/page.tsx
+- src/app/dashboard/style/actions.ts
+- src/app/dashboard/posts/page.tsx
+- src/app/dashboard/posts/new/page.tsx
+- src/app/dashboard/posts/new/actions.ts
+- src/app/dashboard/posts/[postId]/page.tsx
+- log_project.md
+
+### Database / Migration
+- No schema changes.
+- No migration required.
+
+### Commands to run after applying this ZIP
+```powershell
+npm install
+npm run dev
+```
+
+### Current status
+- Draft creation flow remains unchanged from the user perspective.
+- Dashboard pages now reuse a cached dashboard context per request.
+- Temporary Neon/session connection failures should show a Thai reload UI instead of an uncaught browser/API error.
+
+### Known issues
+- If the local internet connection or Neon project is unavailable, the app still cannot load protected data, but it should fail more gracefully.
+- If `postgres` has not been installed on the local machine, run `npm install` first. The dependency is already listed in package.json.
+
+### Next steps
+1. Test `/dashboard/posts/new`, create Draft, return to `/dashboard/posts`, and refresh several times.
+2. If stable, commit and push this patch.
+3. Continue to Step 17: OpenAI Generate Post from Draft.

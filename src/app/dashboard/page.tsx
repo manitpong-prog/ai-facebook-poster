@@ -1,33 +1,52 @@
 import Link from "next/link";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { auth } from "@/lib/auth";
-import {
-  ensureDefaultWorkspace,
-  ensureDefaultWritingProfile,
-} from "@/lib/workspace";
+import { DashboardLoadError } from "@/components/dashboard/dashboard-load-error";
+import { getDashboardContext } from "@/lib/dashboard-context";
+import { getSessionErrorMessage } from "@/lib/session";
+import { ensureDefaultWritingProfile } from "@/lib/workspace";
 
 export default async function DashboardPage() {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const { session, currentMembership, error } = await getDashboardContext();
+
+  if (error) {
+    return (
+      <DashboardLoadError
+        title="โหลด Dashboard ไม่สำเร็จ"
+        technicalMessage={getSessionErrorMessage(error)}
+      />
+    );
+  }
 
   if (!session) {
     redirect("/login");
   }
 
-  const currentMembership = await ensureDefaultWorkspace(session.user);
-  const defaultWritingProfile = await ensureDefaultWritingProfile(
-    currentMembership.workspaceId,
-  );
+  if (!currentMembership) {
+    return <DashboardLoadError title="ไม่พบ Workspace" />;
+  }
+
+  let defaultWritingProfile;
+
+  try {
+    defaultWritingProfile = await ensureDefaultWritingProfile(
+      currentMembership.workspaceId,
+    );
+  } catch (profileError) {
+    return (
+      <DashboardLoadError
+        title="โหลดสไตล์การเขียนไม่สำเร็จ"
+        technicalMessage={getSessionErrorMessage(profileError)}
+      />
+    );
+  }
 
   return (
     <div className="mx-auto max-w-6xl">
       <div>
         <h1 className="text-3xl font-bold">Dashboard</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-          ภาพรวมระบบสร้างโพสต์ Facebook ด้วย AI ตอนนี้ระบบพร้อมสำหรับตั้งค่าสไตล์การเขียนแล้ว
+          ภาพรวมระบบสร้างโพสต์ Facebook ด้วย AI ตอนนี้สามารถตั้งค่าสไตล์การเขียนและสร้าง Draft โพสต์ใหม่ได้แล้ว
         </p>
       </div>
 
@@ -35,11 +54,22 @@ export default async function DashboardPage() {
         <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
           <h2 className="text-xl font-semibold">สร้างโพสต์ใหม่</h2>
           <p className="mt-2 text-sm leading-6 text-slate-400">
-            ขั้นถัดไปเราจะเพิ่มช่องใส่หัวข้อ ปุ่มให้ AI เขียน และหน้า Preview ก่อนโพสต์จริง
+            ใส่หัวข้อและคำสั่งเฉพาะโพสต์นี้ แล้วบันทึกเป็น Draft เพื่อเตรียมให้ AI เขียนในขั้นถัดไป
           </p>
 
-          <div className="mt-6 rounded-xl border border-dashed border-slate-700 p-5 text-slate-300">
-            Coming soon: Create Post + AI Preview
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <Link
+              href="/dashboard/posts/new"
+              className="rounded-xl bg-blue-500 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-blue-400"
+            >
+              + สร้าง Draft ใหม่
+            </Link>
+            <Link
+              href="/dashboard/posts"
+              className="rounded-xl border border-slate-700 px-4 py-3 text-center text-sm font-semibold text-slate-200 hover:border-slate-500"
+            >
+              ดูรายการโพสต์
+            </Link>
           </div>
         </div>
 

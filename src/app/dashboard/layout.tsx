@@ -1,25 +1,39 @@
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { DashboardLoadError } from "@/components/dashboard/dashboard-load-error";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { DashboardNav } from "@/components/dashboard/dashboard-nav";
-import { auth } from "@/lib/auth";
-import { ensureDefaultWorkspace } from "@/lib/workspace";
+import { getDashboardContext } from "@/lib/dashboard-context";
+import { getSessionErrorMessage } from "@/lib/session";
 
 export default async function DashboardLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const { session, currentMembership, error } = await getDashboardContext();
+
+  if (error) {
+    return (
+      <DashboardLoadError
+        title="โหลด Dashboard ไม่สำเร็จ"
+        technicalMessage={getSessionErrorMessage(error)}
+      />
+    );
+  }
 
   if (!session) {
     redirect("/login");
   }
 
-  const currentMembership = await ensureDefaultWorkspace(session.user);
+  if (!currentMembership) {
+    return (
+      <DashboardLoadError
+        title="ไม่พบ Workspace"
+        message="ระบบไม่พบ Workspace ของบัญชีนี้ กรุณาลองโหลดหน้านี้ใหม่อีกครั้ง"
+      />
+    );
+  }
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
