@@ -150,3 +150,87 @@ npm run dev
 2. Create Login/Register pages
 3. Create protected Dashboard layout
 4. Auto-create workspace and default writing profile after user signup
+
+---
+
+## 2026-06-18 - Better Auth Login/Register Code Prepared from ZIP
+
+### What was done
+- Updated the uploaded project ZIP directly instead of asking the user to edit files manually
+- Added Better Auth core tables to the Drizzle schema
+- Added Better Auth server configuration with Drizzle adapter
+- Added Better Auth React client configuration
+- Added Next.js auth route handler
+- Added Register page
+- Added Login page
+- Added protected Dashboard page
+- Added Sign Out button
+- Added workspace helper to create a default workspace and default writing profile for new users
+- Updated Landing Page from default Next.js starter page to AI Facebook Poster landing page
+- Updated app metadata and HTML language
+
+### Files created
+- src/lib/auth.ts
+- src/lib/auth-client.ts
+- src/lib/workspace.ts
+- src/app/api/auth/[...all]/route.ts
+- src/app/register/page.tsx
+- src/app/login/page.tsx
+- src/app/dashboard/page.tsx
+- src/components/auth/sign-out-button.tsx
+
+### Files updated
+- src/db/schema.ts
+- src/app/page.tsx
+- src/app/layout.tsx
+- log_project.md
+
+### Database / Migration status
+- Better Auth schema code is ready
+- Migration file has not been generated in this ZIP because node_modules is not included in the uploaded ZIP
+- After replacing files, run the commands below on the local machine:
+
+```powershell
+cd $env:USERPROFILE\Desktop\ai-facebook-poster
+npm install
+npm run db:generate
+npm run db:migrate
+npm run dev
+```
+
+### Expected new database tables after migration
+- user
+- session
+- account
+- verification
+
+### Existing app tables remain
+- workspaces
+- workspace_members
+- facebook_pages
+- writing_profiles
+- posts
+- ai_usage_logs
+
+### Current status
+- Code for email/password registration and login is prepared
+- Dashboard is protected with server-side Better Auth session validation
+- New users should receive a default workspace and default writing profile automatically
+- Dashboard also calls ensureDefaultWorkspace as a fallback so a workspace can be created if the signup hook did not finish before redirect
+
+### Known issues / not done yet
+- Migration still needs to be generated and applied locally
+- No email verification yet
+- No password reset yet
+- No OpenAI integration yet
+- No Facebook API integration yet
+- No create-post form yet
+
+### Next steps
+1. Replace the old project folder with this ZIP contents
+2. Run npm install if node_modules is missing
+3. Run npm run db:generate
+4. Run npm run db:migrate
+5. Run npm run dev
+6. Test register, login, dashboard, and logout
+7. Commit + Push with GitHub Desktop after successful test

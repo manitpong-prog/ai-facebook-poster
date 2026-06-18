@@ -1,65 +1,79 @@
-import Image from "next/image";
+import Link from "next/link";
 
-export default function Home() {
+export default function HomePage() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <main className="min-h-screen bg-slate-950 text-white">
+      <section className="mx-auto flex min-h-screen max-w-6xl flex-col justify-center px-6 py-16">
+        <nav className="mb-16 flex items-center justify-between">
+          <div className="text-lg font-bold">AI Facebook Poster</div>
+
+          <div className="flex items-center gap-3">
+            <Link
+              href="/login"
+              className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:border-slate-500"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+              เข้าสู่ระบบ
+            </Link>
+            <Link
+              href="/register"
+              className="rounded-xl bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-400"
             >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+              เริ่มใช้งาน
+            </Link>
+          </div>
+        </nav>
+
+        <div className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+          <div>
+            <p className="mb-4 inline-flex rounded-full border border-blue-400/30 bg-blue-400/10 px-4 py-2 text-sm text-blue-200">
+              AI Content Dashboard for Facebook Pages
+            </p>
+
+            <h1 className="max-w-3xl text-4xl font-bold tracking-tight sm:text-6xl">
+              ใส่แค่หัวข้อ แล้วให้ AI เขียนโพสต์เพจในสไตล์ของคุณ
+            </h1>
+
+            <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">
+              ระบบช่วยสร้างโพสต์ Facebook Page จากหัวข้อสั้น ๆ รองรับ Preview,
+              แก้ไขข้อความ, โพสต์ทันที และตั้งเวลาโพสต์ในอนาคต
+            </p>
+
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <Link
+                href="/register"
+                className="rounded-xl bg-blue-500 px-6 py-3 text-center font-semibold text-white hover:bg-blue-400"
+              >
+                สร้างบัญชีฟรี
+              </Link>
+              <Link
+                href="/login"
+                className="rounded-xl border border-slate-700 px-6 py-3 text-center font-semibold text-slate-200 hover:border-slate-500"
+              >
+                เข้าสู่ Dashboard
+              </Link>
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-2xl">
+            <div className="rounded-2xl bg-slate-950 p-5">
+              <div className="text-sm text-slate-400">หัวข้อโพสต์</div>
+              <div className="mt-2 rounded-xl border border-slate-800 bg-slate-900 p-4 text-slate-100">
+                วิธีทำให้ลูกค้าเก่ากลับมาซื้อซ้ำ
+              </div>
+
+              <div className="mt-5 text-sm text-slate-400">สไตล์การเขียน</div>
+              <div className="mt-2 rounded-xl border border-slate-800 bg-slate-900 p-4 text-slate-100">
+                เป็นกันเอง อ่านง่าย เหมือนเจ้าของเพจเล่าเอง ไม่ขายของแรง
+                ไม่เกิน 300 คำ
+              </div>
+
+              <div className="mt-5 rounded-xl bg-blue-500 p-4 text-center font-semibold">
+                ให้ AI เขียนโพสต์
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+      </section>
+    </main>
   );
 }
