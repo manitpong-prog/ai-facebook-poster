@@ -8,6 +8,13 @@ import { posts } from "@/db/schema";
 import { getDashboardContext } from "@/lib/dashboard-context";
 import { getSessionErrorMessage } from "@/lib/session";
 
+type PostsPageProps = {
+  searchParams?: Promise<{
+    deleted?: string;
+    error?: string;
+  }>;
+};
+
 const statusLabels: Record<string, string> = {
   draft: "Draft",
   generated: "AI เขียนแล้ว",
@@ -16,6 +23,10 @@ const statusLabels: Record<string, string> = {
   posted: "โพสต์แล้ว",
   cancelled: "ยกเลิก",
   error: "มีปัญหา",
+};
+
+const errorLabels: Record<string, string> = {
+  post_not_found: "ไม่พบโพสต์ หรือโพสต์นี้ไม่ได้อยู่ใน Workspace ของคุณ",
 };
 
 function formatDate(value: Date | null) {
@@ -30,7 +41,7 @@ function formatDate(value: Date | null) {
   }).format(value);
 }
 
-export default async function PostsPage() {
+export default async function PostsPage({ searchParams }: PostsPageProps) {
   const { session, currentMembership, error } = await getDashboardContext();
 
   if (error) {
@@ -77,6 +88,10 @@ export default async function PostsPage() {
     );
   }
 
+  const params = await searchParams;
+  const wasDeleted = params?.deleted === "1";
+  const errorMessage = params?.error ? errorLabels[params.error] : "";
+
   return (
     <div className="mx-auto max-w-6xl">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -84,8 +99,8 @@ export default async function PostsPage() {
           <p className="text-sm font-medium text-blue-200">Posts</p>
           <h1 className="mt-2 text-3xl font-bold">รายการโพสต์</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-            ดู Draft และประวัติโพสต์ของ Workspace นี้ รอบนี้ยังเป็นรายการ Draft ก่อน
-            ขั้นถัดไปจะเพิ่ม AI Preview และโพสต์จริง
+            ดู Draft และโพสต์ที่ Gemini เขียนแล้วของ Workspace นี้
+            ก่อนนำไปโพสต์จริงในขั้นถัดไป
           </p>
         </div>
 
@@ -97,12 +112,24 @@ export default async function PostsPage() {
         </Link>
       </div>
 
+      {wasDeleted ? (
+        <div className="mt-6 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+          ลบ Draft เรียบร้อยแล้ว
+        </div>
+      ) : null}
+
+      {errorMessage ? (
+        <div className="mt-6 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+          {errorMessage}
+        </div>
+      ) : null}
+
       <section className="mt-8 rounded-2xl border border-slate-800 bg-slate-900">
         {workspacePosts.length === 0 ? (
           <div className="p-8 text-center">
             <h2 className="text-xl font-semibold">ยังไม่มีโพสต์</h2>
             <p className="mt-2 text-sm text-slate-400">
-              เริ่มจากสร้าง Draft แรก แล้วระบบจะบันทึกไว้ให้กลับมาดูต่อได้
+              เริ่มจากสร้าง Draft แรก แล้วกดให้ Gemini เขียน Preview ต่อได้
             </p>
             <Link
               href="/dashboard/posts/new"

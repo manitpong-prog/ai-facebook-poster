@@ -398,3 +398,162 @@ npm run dev
 1. Test `/dashboard/posts/new`, create Draft, return to `/dashboard/posts`, and refresh several times.
 2. If stable, commit and push this patch.
 3. Continue to Step 17: OpenAI Generate Post from Draft.
+
+---
+
+## 2026-06-18 - Step 17 Gemini Generate Post Preview
+
+### What was done
+- Added Gemini AI integration using the official `@google/genai` SDK
+- Added Gemini post generation helper for Thai Facebook Page posts
+- Added server action to generate post content from an existing Draft
+- Updated post detail page to include a “Generate with Gemini” action
+- Added generated text Preview area in post detail page
+- Saved Gemini output to `posts.generated_text`
+- Changed post status from `draft` to `generated` after successful generation
+- Added AI usage logging into `ai_usage_logs` when usage metadata is available
+- Added `GEMINI_MODEL` environment variable support with default `gemini-3.5-flash`
+
+### Files created
+- src/lib/ai/gemini.ts
+- src/app/dashboard/posts/[postId]/actions.ts
+
+### Files updated
+- src/app/dashboard/posts/[postId]/page.tsx
+- src/app/dashboard/posts/page.tsx
+- .env.local
+- log_project.md
+
+### Commands to run
+```powershell
+npm install
+npm run dev
+```
+
+### Environment variables used
+- GEMINI_API_KEY
+- AI_PROVIDER=gemini
+- GEMINI_MODEL=gemini-3.5-flash
+
+### Database / Migration
+- No migration required
+- Existing tables used:
+  - posts
+  - writing_profiles
+  - ai_usage_logs
+
+### Current status
+- Users can create a Draft post
+- Users can open the Draft detail page
+- Users can click “ให้ Gemini เขียนโพสต์”
+- Gemini generates Thai Facebook post content using the selected Writing Style
+- Generated content is saved and displayed as Preview
+
+### Known issues
+- Generated text cannot be edited manually yet
+- No Facebook publishing yet
+- No scheduled post flow yet
+- If Gemini quota/API key/model fails, user sees an error message on the post detail page
+
+### Next steps
+1. Add generated text edit/save flow
+2. Add Regenerate UX with better loading state
+3. Add Facebook Page Settings
+4. Add Publish Now through Meta Pages API
+
+
+---
+
+## 2026-06-18 - Gemini Model Fix and Error Diagnostics
+
+### What was done
+- Changed default Gemini model from `gemini-3.5-flash` to stable `gemini-2.5-flash`
+- Updated `.env.local` model setting to `GEMINI_MODEL=gemini-2.5-flash`
+- Improved Gemini generation error handling so the UI shows the real technical error message
+- Save Gemini generation errors into `posts.error_message` for easier debugging
+
+### Files updated
+- src/lib/ai/gemini.ts
+- src/app/dashboard/posts/[postId]/actions.ts
+- src/app/dashboard/posts/[postId]/page.tsx
+- .env.local
+- log_project.md
+
+### Commands to run
+```powershell
+npm install
+npm run dev
+```
+
+### Database / Migration
+- No migration required
+- Uses existing `posts.error_message` column
+
+### Current status
+- Gemini generation uses a valid stable text model name by default
+- If Gemini fails again, the post detail page should show the exact API error message
+
+### Next steps
+1. Test Generate with Gemini again
+2. If the API key or quota has an issue, use the exact error message now shown on the page to fix it
+3. After Gemini generation passes, build Preview Edit + Save
+
+---
+
+## 2026-06-18 - Step 18 Preview Edit, CTA Variation, and Draft Delete
+
+### What was done
+- Added editable Preview textarea on the post detail page after Gemini generation
+- Added server action to save edited Preview text back to `posts.generated_text`
+- Added a “ลบ Draft นี้” action for Draft/Generated/Error/Cancelled posts so duplicate drafts can be removed
+- Added disabled/pending submit button component to reduce accidental double submission
+- Updated Create Post form to disable the submit button while saving a Draft
+- Updated Generate and Save Preview buttons to show pending states while server actions run
+- Updated Writing Style CTA field label from fixed CTA text to “แนวทาง CTA / ตัวอย่าง CTA หลายแบบ”
+- Updated Gemini prompt so CTA guidelines are treated as inspiration and varied per post instead of copied exactly every time
+- Changed Gemini default fallback model to `gemini-2.5-flash-lite`
+- Updated Posts list to show a success message after deleting a draft
+
+### Files created
+- src/components/forms/submit-button.tsx
+
+### Files updated
+- src/app/dashboard/posts/[postId]/actions.ts
+- src/app/dashboard/posts/[postId]/page.tsx
+- src/app/dashboard/posts/new/page.tsx
+- src/app/dashboard/posts/page.tsx
+- src/app/dashboard/style/page.tsx
+- src/lib/ai/gemini.ts
+- log_project.md
+
+### Commands to run
+```powershell
+npm install
+npm run dev
+```
+
+### Database / Migration
+- No migration required
+- Existing columns used:
+  - `posts.generated_text`
+  - `posts.status`
+  - `posts.error_message`
+  - `writing_profiles.call_to_action`
+
+### Current status
+- Users can create a Draft
+- Users can generate a post with Gemini
+- Users can edit and save the generated Preview
+- Users can delete duplicate Draft/Generated/Error/Cancelled posts
+- CTA settings now guide Gemini to vary the closing CTA instead of always repeating one exact sentence
+
+### Known issues
+- Delete is intentionally disabled for scheduled/posting/posted statuses
+- There is still no Facebook publishing flow yet
+- There is still no schedule publishing flow yet
+
+### Next steps
+1. Test Create Draft double-click prevention
+2. Test delete duplicate Draft
+3. Test Generate → Edit Preview → Save
+4. Build Facebook Page Settings and Publish Now flow

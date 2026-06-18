@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { DashboardLoadError } from "@/components/dashboard/dashboard-load-error";
+import { SubmitButton } from "@/components/forms/submit-button";
 import { getDashboardContext } from "@/lib/dashboard-context";
 import { getSessionErrorMessage } from "@/lib/session";
 import { ensureDefaultWritingProfile } from "@/lib/workspace";
@@ -136,20 +137,23 @@ export default async function NewPostPage({ searchParams }: NewPostPageProps) {
               <ul className="mt-3 list-disc space-y-2 pl-5 text-slate-400">
                 <li>บันทึกหัวข้อเป็น Draft ลง Neon</li>
                 <li>ผูก Draft นี้กับสไตล์การเขียนหลักของคุณ</li>
-                <li>ยังไม่เรียก OpenAI และยังไม่โพสต์ Facebook</li>
+                <li>ยังไม่เรียก Gemini และยังไม่โพสต์ Facebook</li>
               </ul>
             </div>
 
-            <button className="w-full rounded-xl bg-blue-500 px-4 py-3 font-semibold text-white transition hover:bg-blue-400">
+            <SubmitButton
+              pendingText="กำลังบันทึก Draft..."
+              className="w-full rounded-xl bg-blue-500 px-4 py-3 font-semibold text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-60"
+            >
               บันทึกเป็น Draft
-            </button>
+            </SubmitButton>
           </div>
         </form>
 
         <aside className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
           <h2 className="text-xl font-semibold">สไตล์ที่จะใช้กับโพสต์นี้</h2>
           <p className="mt-2 text-sm text-slate-400">
-            ระบบจะใช้สไตล์หลักนี้เป็นฐานตอนต่อ OpenAI ในขั้นถัดไป
+            ระบบจะใช้สไตล์หลักนี้เป็นฐานตอนให้ Gemini เขียนโพสต์
           </p>
 
           <div className="mt-5 space-y-4 text-sm text-slate-300">

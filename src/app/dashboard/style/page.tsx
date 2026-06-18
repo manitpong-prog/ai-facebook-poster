@@ -173,14 +173,22 @@ export default async function WritingStylePage({ searchParams }: StylePageProps)
         </div>
 
         <label className="flex flex-col gap-2">
-          <span className="text-sm font-medium text-slate-200">CTA ท้ายโพสต์</span>
+          <span className="text-sm font-medium text-slate-200">แนวทาง CTA / ตัวอย่าง CTA หลายแบบ</span>
           <textarea
             name="callToAction"
             defaultValue={profile.callToAction ?? ""}
-            rows={3}
+            rows={6}
             className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-blue-500"
-            placeholder="เช่น ถ้าสนใจ ลองทักมาคุยกันได้ครับ"
+            placeholder={`เช่น
+ปิดท้ายแบบนุ่ม ๆ ไม่ขายของแรง
+- ชวนคอมเมนต์เล่าประสบการณ์
+- ชวนลองนำไปปรับใช้
+- ชวนทักมาคุยถ้าอยากได้ไอเดียเพิ่ม
+- ชวนสังเกตปัญหาของร้านตัวเอง`}
           />
+          <span className="text-xs leading-5 text-slate-500">
+            แนะนำให้ใส่เป็นแนวทางหรือหลายตัวอย่าง ระบบจะให้ AI เลือก/ดัดแปลงให้เข้ากับแต่ละโพสต์ ไม่คัดลอกประโยคเดิมซ้ำทุกครั้ง
+          </span>
         </label>
 
         <label className="flex flex-col gap-2">
