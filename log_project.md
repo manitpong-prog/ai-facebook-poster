@@ -97,3 +97,56 @@ npm install -D drizzle-kit dotenv
 5. เพิ่ม DATABASE_URL
 6. สร้าง Drizzle schema
 7. เชื่อม Better Auth
+
+---
+
+## 2026-06-18 - Neon + Drizzle Initial Schema
+
+### What was done
+- Created Neon Postgres database for the project
+- Added DATABASE_URL to .env.local
+- Added Drizzle config
+- Added initial application database schema
+- Added database connection helper
+- Added health check API route for database testing
+- Generated and applied first database migration
+
+### Files created
+- drizzle.config.ts
+- src/db/schema.ts
+- src/db/index.ts
+- src/app/api/health/db/route.ts
+- drizzle/*
+
+### Files updated
+- package.json
+- package-lock.json
+- .env.local
+
+### Commands run
+```powershell
+npm run db:generate
+npm run db:migrate
+npm run dev
+```
+
+### Database tables created
+- workspaces
+- workspace_members
+- facebook_pages
+- writing_profiles
+- posts
+- ai_usage_logs
+
+### Current status
+- Next.js project can connect to Neon Postgres through Drizzle
+- Database schema for core posting system is ready
+- Better Auth is not connected yet
+- OpenAI API is not connected yet
+- Facebook API is not connected yet
+
+### Next steps
+1. Add Better Auth database adapter and auth route
+2. Create Login/Register pages
+3. Create protected Dashboard layout
+4. Auto-create workspace and default writing profile after user signup
