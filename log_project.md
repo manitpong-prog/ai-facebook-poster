@@ -810,3 +810,135 @@ npm run build
 2. Commit Step 21.1 after local test passes
 3. Step 21.2: Add Cron endpoint to automatically publish due scheduled posts
 4. Step 21.3: Configure Vercel Cron to call the scheduled publishing endpoint
+
+---
+
+## 2026-06-19 - Step 21.2A Manual Cron Endpoint for Scheduled Publishing
+
+### What was done
+- Added a manual Cron/API endpoint for publishing due scheduled posts:
+  - `GET /api/cron/publish-scheduled`
+  - `POST /api/cron/publish-scheduled`
+- Added shared server helper `publishDueScheduledPosts()` to keep the scheduled publishing logic outside the route handler.
+- The endpoint checks posts that are ready to publish using these conditions:
+  - `status = scheduled`
+  - `scheduled_at <= now`
+  - `facebook_post_id IS NULL`
+- Added a small claim/lock step before posting:
+  - each due post is changed from `scheduled` to `posting` before calling Facebook
+  - the update condition still requires `status = scheduled`, which helps prevent duplicate posting if two Cron calls run at almost the same time
+- After a successful Facebook publish, the post is updated with:
+  - `status = posted`
+  - `publish_mode = schedule`
+  - `facebook_post_id`
+  - `facebook_post_url`
+  - `posted_at`
+  - cleared `error_message`
+- If publishing fails, the post is marked as:
+  - `status = error`
+  - `error_message = <Facebook/API error>`
+  - `retry_count = retry_count + 1`
+- The endpoint returns JSON with a clear summary:
+  - `dueCount`
+  - `publishedCount`
+  - `failedCount`
+  - `skippedCount`
+  - per-post results
+- Added optional Cron authorization:
+  - Local development works without `CRON_SECRET`
+  - Production should set `CRON_SECRET`
+  - When `CRON_SECRET` exists, call the endpoint with `Authorization: Bearer <CRON_SECRET>` or `?secret=<CRON_SECRET>`
+
+### Important behavior / decision
+- This is Step 21.2A: manual Cron endpoint first.
+- The app does not yet include `vercel.json` / Vercel Cron scheduling. That is intentionally left for Step 21.2B after the manual endpoint is tested.
+- On publish failure, the post is moved to `error` instead of automatic retrying. This avoids duplicate posts in uncertain cases where Facebook may have accepted a post but the response failed.
+- Existing "Publish Now" behavior is unchanged.
+
+### Files added
+- src/lib/scheduled-publisher.ts
+- src/app/api/cron/publish-scheduled/route.ts
+
+### Files updated
+- log_project.md
+
+### Commands run
+```powershell
+npm ci --prefer-offline --no-audit --no-fund --ignore-scripts
+npm run lint
+npx tsc --noEmit
+npm run build
+```
+
+### Validation result
+- `npm run lint` passed
+- `npx tsc --noEmit` passed
+- `npm run build` compiled successfully and finished TypeScript, then the sandbox timed out while Next.js was collecting page data. This is the same sandbox timeout pattern seen in earlier steps, not a TypeScript error.
+
+### Database / Migration
+- No migration required
+- Existing `posts` columns are used:
+  - `status`
+  - `publish_mode`
+  - `scheduled_at`
+  - `posting_started_at`
+  - `posted_at`
+  - `facebook_post_id`
+  - `facebook_post_url`
+  - `error_message`
+  - `retry_count`
+- Existing `facebook_pages` columns are used:
+  - `page_id`
+  - `access_token_encrypted`
+
+### Environment variables
+- Optional new production variable:
+  - `CRON_SECRET`
+- Local development can test the endpoint without setting `CRON_SECRET`.
+- For production, set `CRON_SECRET` before enabling an external Cron trigger.
+
+### How to test locally
+1. Run the app:
+```powershell
+npm run dev
+```
+2. Make sure `/dashboard/facebook` has a working Page ID and Page Access Token.
+3. Create or open a generated post.
+4. Schedule it for a near-future Thailand time.
+5. Wait until the scheduled time has passed.
+6. Open this URL in the browser:
+```text
+http://localhost:3000/api/cron/publish-scheduled
+```
+7. Expected success response example:
+```json
+{
+  "ok": true,
+  "dueCount": 1,
+  "publishedCount": 1,
+  "failedCount": 0,
+  "skippedCount": 0,
+  "results": [
+    {
+      "status": "published",
+      "facebookPostId": "105037572408076_..."
+    }
+  ]
+}
+```
+8. Go back to `/dashboard/posts` and confirm the post status is `posted`.
+
+### Current status
+- Scheduled posts can now be published by manually calling the Cron endpoint.
+- This confirms the worker logic before connecting a real automatic scheduler.
+
+### Known issues
+- Vercel Cron is not configured yet.
+- Posts that fail auto publishing are set to `error` for manual review instead of retrying automatically.
+- The app still stores the Page Access Token as dev-only plain text in `facebook_pages.access_token_encrypted`.
+
+### Next steps
+1. Test Step 21.2A locally with a scheduled post whose time has passed.
+2. Commit Step 21.2A after local test passes.
+3. Step 21.2B: add `vercel.json` and configure Vercel Cron to call `/api/cron/publish-scheduled` automatically every 5 or 10 minutes.
+4. Later: add a retry strategy / stuck `posting` recovery screen if needed.
