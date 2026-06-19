@@ -100,8 +100,8 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
           <p className="text-sm font-medium text-blue-200">Posts</p>
           <h1 className="mt-2 text-3xl font-bold">รายการโพสต์</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-            ดู Draft และโพสต์ที่ Gemini เขียนแล้วของ Workspace นี้
-            แล้วเปิดเข้าไปโพสต์ Preview ไปยัง Facebook Page ได้ทันที
+            ดู Draft โพสต์ที่ Gemini เขียนแล้ว โพสต์ที่ตั้งเวลาไว้
+            และโพสต์ที่เผยแพร่ไปยัง Facebook Page แล้ว
           </p>
         </div>
 
@@ -159,6 +159,11 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
                       <span className="rounded-full border border-slate-700 px-3 py-1">
                         Mode: {post.publishMode}
                       </span>
+                      {post.scheduledAt ? (
+                        <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-amber-100">
+                          ตั้งเวลา: {formatDate(post.scheduledAt)}
+                        </span>
+                      ) : null}
                       {post.facebookPostUrl ? (
                         <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-emerald-100">
                           มีลิงก์ Facebook แล้ว
@@ -170,7 +175,12 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
                   <div className="text-left text-xs text-slate-500 sm:text-right">
                     <div>สร้าง: {formatDate(post.createdAt)}</div>
                     <div>อัปเดต: {formatDate(post.updatedAt)}</div>
-                    {post.postedAt ? <div>โพสต์: {formatDate(post.postedAt)}</div> : null}
+                    {post.scheduledAt ? (
+                      <div>ตั้งเวลา: {formatDate(post.scheduledAt)}</div>
+                    ) : null}
+                    {post.postedAt ? (
+                      <div>โพสต์: {formatDate(post.postedAt)}</div>
+                    ) : null}
                   </div>
                 </div>
               </Link>

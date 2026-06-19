@@ -728,3 +728,85 @@ npm run build
    - Confirm status changes to `posted` and the Facebook Post ID/URL is saved
 2. Commit Step 20 after local test passes
 3. Step 21: Add scheduled posts and Vercel Cron
+
+---
+
+## 2026-06-19 - Step 21.1 Schedule Post UI + Save Scheduled Queue
+
+### What was done
+- Added a first scheduled-publishing flow on the post detail page at `/dashboard/posts/[postId]`
+- Added a new “Schedule Post” card that lets the user choose a date/time using a `datetime-local` input
+- The selected time is interpreted as Thailand time (`Asia/Bangkok`, UTC+7) before saving to the database
+- Added server action `scheduleGeneratedPostAction` to save a generated Preview as a scheduled post
+- Added server action `cancelScheduledPostAction` to cancel a scheduled post and return it to editable generated/draft state
+- Added validation for scheduled posts:
+  - post must have generated Preview text
+  - Facebook Page settings must already be connected
+  - date/time must be valid
+  - schedule time must be in the future
+  - already posted / posting posts cannot be scheduled
+- Updated the post detail UI to show scheduled time badges and success/error messages
+- Updated the posts list to show scheduled time for scheduled posts
+- Updated Preview save behavior so scheduled posts can keep their `scheduled` status after editing/saving the Preview
+- Updated Generate behavior to clear any old schedule when Gemini regenerates a post, to prevent accidental posting of changed content at an old time
+- Updated Publish Now behavior to clear `scheduled_at` when the user manually publishes a scheduled post immediately
+
+### Important behavior / decision
+- Step 21.1 only saves the scheduled queue into the database. It does not automatically publish at the scheduled time yet.
+- Automatic publishing will be implemented in Step 21.2 with a Cron endpoint.
+- Scheduled times are shown and entered in Thailand time (`Asia/Bangkok`). The database stores the timestamp as a timezone-aware value.
+
+### Files updated
+- src/app/dashboard/posts/[postId]/actions.ts
+- src/app/dashboard/posts/[postId]/page.tsx
+- src/app/dashboard/posts/page.tsx
+- log_project.md
+
+### Commands run
+```powershell
+npm ci --prefer-offline --no-audit --no-fund --ignore-scripts
+npm run lint
+npx tsc --noEmit
+npm run build
+```
+
+### Validation result
+- `npm run lint` passed
+- `npx tsc --noEmit` passed
+- `npm run build` compiled successfully, then the sandbox timed out while Next.js was still running its TypeScript/build analysis step. This is the same sandbox timeout pattern seen in earlier steps, and standalone `npx tsc --noEmit` passed.
+
+### Database / Migration
+- No migration required
+- Existing `posts` columns are used:
+  - `status`
+  - `publish_mode`
+  - `scheduled_at`
+  - `facebook_page_id`
+  - `posting_started_at`
+  - `error_message`
+  - `updated_at`
+
+### Environment variables
+- No new environment variables required
+
+### Current status
+- Users can now set a generated post to `scheduled` status with a future Thailand date/time
+- Users can cancel scheduled posts before they are published
+- Scheduled posts appear with schedule metadata in both the detail page and posts list
+
+### Known issues
+- Scheduled posts are not published automatically yet because the Cron worker is not implemented
+- The app still stores the Page Access Token as dev-only plain text in `facebook_pages.access_token_encrypted`
+- Scheduled publishing has no retry worker yet; retries will be designed with the Cron endpoint
+
+### Next steps
+1. Test Step 21.1 locally:
+   - Create or open a generated post
+   - Save Preview if edited
+   - Choose a future Thailand date/time
+   - Click “บันทึกเวลาตั้งโพสต์”
+   - Confirm status becomes `scheduled` and the schedule time appears in the post detail/list
+   - Try “ยกเลิกเวลาตั้งโพสต์” and confirm status returns to generated/draft
+2. Commit Step 21.1 after local test passes
+3. Step 21.2: Add Cron endpoint to automatically publish due scheduled posts
+4. Step 21.3: Configure Vercel Cron to call the scheduled publishing endpoint

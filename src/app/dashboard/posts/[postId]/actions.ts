@@ -5,13 +5,26 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { db } from "@/db";
-import { aiUsageLogs, facebookPages, posts, writingProfiles } from "@/db/schema";
+import {
+  aiUsageLogs,
+  facebookPages,
+  posts,
+  writingProfiles,
+} from "@/db/schema";
 import { generateFacebookPostWithGemini } from "@/lib/ai/gemini";
-import { buildFacebookPostUrl, publishTextToFacebookPage } from "@/lib/facebook";
+import {
+  buildFacebookPostUrl,
+  publishTextToFacebookPage,
+} from "@/lib/facebook";
 import { getSessionResult } from "@/lib/session";
 import { ensureDefaultWorkspace } from "@/lib/workspace";
 
-const DELETABLE_STATUSES = new Set(["draft", "generated", "error", "cancelled"]);
+const DELETABLE_STATUSES = new Set([
+  "draft",
+  "generated",
+  "error",
+  "cancelled",
+]);
 
 function getPostId(formData: FormData) {
   const value = formData.get("postId");
@@ -75,7 +88,9 @@ async function getOwnedPost(postId: string) {
     };
   }
 
-  const currentMembership = await ensureDefaultWorkspace(sessionResult.session.user);
+  const currentMembership = await ensureDefaultWorkspace(
+    sessionResult.session.user,
+  );
 
   const [post] = await db
     .select({
@@ -86,6 +101,8 @@ async function getOwnedPost(postId: string) {
       generatedText: posts.generatedText,
       writingProfileId: posts.writingProfileId,
       status: posts.status,
+      publishMode: posts.publishMode,
+      scheduledAt: posts.scheduledAt,
       facebookPostId: posts.facebookPostId,
     })
     .from(posts)
@@ -155,6 +172,9 @@ export async function generatePostWithGeminiAction(formData: FormData) {
       .set({
         generatedText: generated.content,
         status: "generated",
+        publishMode: "draft",
+        scheduledAt: null,
+        facebookPageId: null,
         errorMessage: null,
         updatedAt: new Date(),
       })
@@ -231,12 +251,23 @@ export async function updateGeneratedTextAction(formData: FormData) {
     redirect("/dashboard/posts?error=post_not_found");
   }
 
+  if (
+    ownedPost.post.status === "posting" ||
+    ownedPost.post.status === "posted" ||
+    ownedPost.post.facebookPostId
+  ) {
+    redirect(buildRedirectPath(postId, { updateError: "not_allowed" }));
+  }
+
+  const nextStatus =
+    ownedPost.post.status === "scheduled" ? "scheduled" : "generated";
+
   try {
     await db
       .update(posts)
       .set({
         generatedText,
-        status: "generated",
+        status: nextStatus,
         errorMessage: null,
         updatedAt: new Date(),
       })
@@ -301,6 +332,170 @@ export async function deleteDraftPostAction(formData: FormData) {
   redirect("/dashboard/posts?deleted=1");
 }
 
+function parseBangkokDateTimeLocal(value: string) {
+  const trimmed = value.trim();
+
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(trimmed)) {
+    return null;
+  }
+
+  const parsed = new Date(`${trimmed}:00+07:00`);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed;
+}
+
+export async function scheduleGeneratedPostAction(formData: FormData) {
+  const postId = getPostId(formData);
+  const scheduledAtLocal = getTextValue(formData, "scheduledAtLocal");
+
+  if (!postId) {
+    redirect("/dashboard/posts?error=post_not_found");
+  }
+
+  const ownedPost = await getOwnedPost(postId);
+
+  if (ownedPost.sessionError) {
+    redirect(buildRedirectPath(postId, { scheduleError: "session_failed" }));
+  }
+
+  if (!ownedPost.session) {
+    redirect("/login");
+  }
+
+  if (!ownedPost.currentMembership || !ownedPost.post) {
+    redirect("/dashboard/posts?error=post_not_found");
+  }
+
+  const { currentMembership, post } = ownedPost;
+  const generatedText = post.generatedText?.trim() ?? "";
+
+  if (generatedText.length < 3) {
+    redirect(buildRedirectPath(postId, { scheduleError: "content_required" }));
+  }
+
+  if (post.status === "posting") {
+    redirect(buildRedirectPath(postId, { scheduleError: "already_posting" }));
+  }
+
+  if (post.status === "posted" || post.facebookPostId) {
+    redirect(buildRedirectPath(postId, { scheduleError: "already_posted" }));
+  }
+
+  const scheduledAt = parseBangkokDateTimeLocal(scheduledAtLocal);
+
+  if (!scheduledAt) {
+    redirect(buildRedirectPath(postId, { scheduleError: "invalid_datetime" }));
+  }
+
+  if (scheduledAt.getTime() <= Date.now() + 60_000) {
+    redirect(buildRedirectPath(postId, { scheduleError: "future_required" }));
+  }
+
+  const [savedPage] = await db
+    .select()
+    .from(facebookPages)
+    .where(eq(facebookPages.workspaceId, currentMembership.workspaceId))
+    .limit(1);
+
+  if (!savedPage || !savedPage.pageId || !savedPage.accessTokenEncrypted) {
+    redirect(
+      buildRedirectPath(postId, { scheduleError: "facebook_not_connected" }),
+    );
+  }
+
+  try {
+    await db
+      .update(posts)
+      .set({
+        facebookPageId: savedPage.id,
+        status: "scheduled",
+        publishMode: "schedule",
+        scheduledAt,
+        postingStartedAt: null,
+        errorMessage: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(posts.id, post.id),
+          eq(posts.workspaceId, currentMembership.workspaceId),
+        ),
+      );
+  } catch (error) {
+    console.error("Failed to schedule generated post:", error);
+    redirect(buildRedirectPath(postId, { scheduleError: "schedule_failed" }));
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/posts");
+  revalidatePath(`/dashboard/posts/${postId}`);
+  redirect(buildRedirectPath(postId, { scheduled: "1" }));
+}
+
+export async function cancelScheduledPostAction(formData: FormData) {
+  const postId = getPostId(formData);
+
+  if (!postId) {
+    redirect("/dashboard/posts?error=post_not_found");
+  }
+
+  const ownedPost = await getOwnedPost(postId);
+
+  if (ownedPost.sessionError) {
+    redirect(buildRedirectPath(postId, { scheduleError: "session_failed" }));
+  }
+
+  if (!ownedPost.session) {
+    redirect("/login");
+  }
+
+  if (!ownedPost.currentMembership || !ownedPost.post) {
+    redirect("/dashboard/posts?error=post_not_found");
+  }
+
+  if (ownedPost.post.status === "posting") {
+    redirect(buildRedirectPath(postId, { scheduleError: "already_posting" }));
+  }
+
+  if (ownedPost.post.status === "posted" || ownedPost.post.facebookPostId) {
+    redirect(buildRedirectPath(postId, { scheduleError: "already_posted" }));
+  }
+
+  if (ownedPost.post.status !== "scheduled") {
+    redirect(buildRedirectPath(postId, { scheduleError: "not_scheduled" }));
+  }
+
+  try {
+    await db
+      .update(posts)
+      .set({
+        status: ownedPost.post.generatedText ? "generated" : "draft",
+        publishMode: "draft",
+        scheduledAt: null,
+        errorMessage: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(posts.id, ownedPost.post.id),
+          eq(posts.workspaceId, ownedPost.currentMembership.workspaceId),
+        ),
+      );
+  } catch (error) {
+    console.error("Failed to cancel scheduled post:", error);
+    redirect(buildRedirectPath(postId, { scheduleError: "cancel_failed" }));
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/posts");
+  revalidatePath(`/dashboard/posts/${postId}`);
+  redirect(buildRedirectPath(postId, { scheduleCancelled: "1" }));
+}
+
 export async function publishGeneratedPostNowAction(formData: FormData) {
   const postId = getPostId(formData);
 
@@ -344,7 +539,9 @@ export async function publishGeneratedPostNowAction(formData: FormData) {
     .limit(1);
 
   if (!savedPage || !savedPage.pageId || !savedPage.accessTokenEncrypted) {
-    redirect(buildRedirectPath(postId, { publishError: "facebook_not_connected" }));
+    redirect(
+      buildRedirectPath(postId, { publishError: "facebook_not_connected" }),
+    );
   }
 
   let facebookPostId = "";
@@ -357,6 +554,7 @@ export async function publishGeneratedPostNowAction(formData: FormData) {
         facebookPageId: savedPage.id,
         status: "posting",
         publishMode: "post_now",
+        scheduledAt: null,
         postingStartedAt: new Date(),
         errorMessage: null,
         updatedAt: new Date(),

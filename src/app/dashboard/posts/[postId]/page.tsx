@@ -10,9 +10,11 @@ import { getDashboardContext } from "@/lib/dashboard-context";
 import { getSessionErrorMessage } from "@/lib/session";
 
 import {
+  cancelScheduledPostAction,
   deleteDraftPostAction,
   generatePostWithGeminiAction,
   publishGeneratedPostNowAction,
+  scheduleGeneratedPostAction,
   updateGeneratedTextAction,
 } from "./actions";
 
@@ -29,6 +31,9 @@ type PostDetailPageProps = {
     deleteError?: string;
     published?: string;
     publishError?: string;
+    scheduled?: string;
+    scheduleCancelled?: string;
+    scheduleError?: string;
     facebookPostId?: string;
     facebookPostUrl?: string;
     message?: string;
@@ -55,6 +60,7 @@ const updateErrorLabels: Record<string, string> = {
   session_failed: "อ่าน session ไม่สำเร็จ กรุณาลองโหลดหน้าใหม่แล้วกดอีกครั้ง",
   content_required: "กรุณาใส่ข้อความ Preview อย่างน้อย 10 ตัวอักษร",
   save_failed: "บันทึก Preview ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
+  not_allowed: "โพสต์นี้เผยแพร่แล้วหรือกำลังโพสต์อยู่ จึงแก้ Preview ไม่ได้",
 };
 
 const deleteErrorLabels: Record<string, string> = {
@@ -65,16 +71,35 @@ const deleteErrorLabels: Record<string, string> = {
 
 const publishErrorLabels: Record<string, string> = {
   session_failed: "อ่าน session ไม่สำเร็จ กรุณาลองโหลดหน้าใหม่แล้วกดอีกครั้ง",
-  content_required: "ยังไม่มี Preview สำหรับโพสต์ กรุณาให้ Gemini เขียนหรือบันทึกข้อความก่อน",
+  content_required:
+    "ยังไม่มี Preview สำหรับโพสต์ กรุณาให้ Gemini เขียนหรือบันทึกข้อความก่อน",
   facebook_not_connected:
     "ยังไม่ได้เชื่อม Facebook Page หรือยังไม่มี Page Access Token กรุณาไปตั้งค่า Facebook Page ก่อน",
-  already_posting: "โพสต์นี้กำลังถูกส่งไป Facebook อยู่ กรุณารอสักครู่แล้วโหลดหน้าใหม่",
-  already_posted: "โพสต์นี้ถูกเผยแพร่ไป Facebook แล้ว ระบบไม่โพสต์ซ้ำให้อัตโนมัติ",
+  already_posting:
+    "โพสต์นี้กำลังถูกส่งไป Facebook อยู่ กรุณารอสักครู่แล้วโหลดหน้าใหม่",
+  already_posted:
+    "โพสต์นี้ถูกเผยแพร่ไป Facebook แล้ว ระบบไม่โพสต์ซ้ำให้อัตโนมัติ",
   facebook_failed:
     "โพสต์ไป Facebook ไม่สำเร็จ กรุณาเช็ก Page Access Token, permission หรือสถานะ Meta App แล้วลองใหม่",
 };
 
 const deletableStatuses = new Set(["draft", "generated", "error", "cancelled"]);
+
+const scheduleErrorLabels: Record<string, string> = {
+  session_failed: "อ่าน session ไม่สำเร็จ กรุณาลองโหลดหน้าใหม่แล้วกดอีกครั้ง",
+  content_required:
+    "ยังไม่มี Preview สำหรับตั้งเวลา กรุณาให้ Gemini เขียนหรือบันทึกข้อความก่อน",
+  facebook_not_connected:
+    "ยังไม่ได้เชื่อม Facebook Page หรือยังไม่มี Page Access Token กรุณาไปตั้งค่า Facebook Page ก่อน",
+  invalid_datetime: "รูปแบบวันเวลาไม่ถูกต้อง กรุณาเลือกวันและเวลาใหม่",
+  future_required: "กรุณาเลือกเวลาหลังจากเวลาปัจจุบันอย่างน้อย 1 นาที",
+  already_posting:
+    "โพสต์นี้กำลังถูกส่งไป Facebook อยู่ กรุณารอสักครู่แล้วโหลดหน้าใหม่",
+  already_posted: "โพสต์นี้ถูกเผยแพร่ไป Facebook แล้ว จึงตั้งเวลาไม่ได้",
+  not_scheduled: "โพสต์นี้ยังไม่ได้อยู่ในสถานะตั้งเวลา",
+  schedule_failed: "บันทึกเวลาตั้งโพสต์ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
+  cancel_failed: "ยกเลิกเวลาตั้งโพสต์ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
+};
 
 function formatDate(value: Date | null) {
   if (!value) {
@@ -88,15 +113,33 @@ function formatDate(value: Date | null) {
   }).format(value);
 }
 
+function addMinutes(value: Date, minutes: number) {
+  return new Date(value.getTime() + minutes * 60_000);
+}
+
+function formatDateTimeLocalBangkok(value: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone: "Asia/Bangkok",
+  }).formatToParts(value);
+
+  const getPart = (type: string) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+
+  return `${getPart("year")}-${getPart("month")}-${getPart("day")}T${getPart("hour")}:${getPart("minute")}`;
+}
+
 function countApproxWords(text: string | null) {
   if (!text?.trim()) {
     return 0;
   }
 
-  return text
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean).length;
+  return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
 export default async function PostDetailPage({
@@ -196,10 +239,21 @@ export default async function PostDetailPage({
   );
   const canPublishNow = Boolean(
     post.generatedText &&
-      hasConnectedFacebookPage &&
-      post.status !== "posted" &&
-      post.status !== "posting",
+    hasConnectedFacebookPage &&
+    post.status !== "posted" &&
+    post.status !== "posting",
   );
+  const canSchedulePost = Boolean(
+    post.generatedText &&
+    hasConnectedFacebookPage &&
+    post.status !== "posted" &&
+    post.status !== "posting",
+  );
+  const canCancelScheduledPost = post.status === "scheduled";
+  const minScheduleDate = addMinutes(new Date(), 1);
+  const defaultScheduleDate = post.scheduledAt ?? addMinutes(new Date(), 60);
+  const minScheduleInput = formatDateTimeLocalBangkok(minScheduleDate);
+  const defaultScheduleInput = formatDateTimeLocalBangkok(defaultScheduleDate);
   const publishedUrl = query.facebookPostUrl || post.facebookPostUrl;
 
   return (
@@ -265,6 +319,19 @@ export default async function PostDetailPage({
         </div>
       ) : null}
 
+      {query.scheduled === "1" ? (
+        <div className="mt-6 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          บันทึกเวลาตั้งโพสต์เรียบร้อยแล้ว ขั้นนี้เป็นการบันทึกคิวไว้ก่อน ระบบ
+          Cron สำหรับโพสต์อัตโนมัติจะทำในขั้นถัดไป
+        </div>
+      ) : null}
+
+      {query.scheduleCancelled === "1" ? (
+        <div className="mt-6 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+          ยกเลิกเวลาตั้งโพสต์เรียบร้อยแล้ว
+        </div>
+      ) : null}
+
       {query.generateError ? (
         <div className="mt-6 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
           <div>
@@ -307,6 +374,13 @@ export default async function PostDetailPage({
         </div>
       ) : null}
 
+      {query.scheduleError ? (
+        <div className="mt-6 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+          {scheduleErrorLabels[query.scheduleError] ??
+            "ตั้งเวลาโพสต์ไม่สำเร็จ กรุณาลองใหม่"}
+        </div>
+      ) : null}
+
       <section className="mt-8 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <article className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
           <div className="flex flex-wrap gap-2 text-xs text-slate-400">
@@ -316,6 +390,11 @@ export default async function PostDetailPage({
             <span className="rounded-full border border-slate-700 px-3 py-1">
               Mode: {post.publishMode}
             </span>
+            {post.scheduledAt ? (
+              <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-amber-100">
+                ตั้งเวลา: {formatDate(post.scheduledAt)}
+              </span>
+            ) : null}
           </div>
 
           <div className="mt-6">
@@ -337,7 +416,9 @@ export default async function PostDetailPage({
               Generate with Gemini
             </h2>
             <p className="mt-2 text-sm leading-6 text-blue-100/80">
-              ระบบจะใช้หัวข้อ + Writing Style ด้านขวา เพื่อเขียนโพสต์ภาษาไทยไม่เกิน {post.writingProfileMaxWords ?? 300} คำ
+              ระบบจะใช้หัวข้อ + Writing Style ด้านขวา
+              เพื่อเขียนโพสต์ภาษาไทยไม่เกิน {post.writingProfileMaxWords ?? 300}{" "}
+              คำ
             </p>
 
             <form action={generatePostWithGeminiAction} className="mt-4">
@@ -346,7 +427,9 @@ export default async function PostDetailPage({
                 pendingText="Gemini กำลังเขียน..."
                 className="rounded-xl bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {post.generatedText ? "ให้ Gemini เขียนใหม่" : "ให้ Gemini เขียนโพสต์"}
+                {post.generatedText
+                  ? "ให้ Gemini เขียนใหม่"
+                  : "ให้ Gemini เขียนโพสต์"}
               </SubmitButton>
             </form>
           </div>
@@ -364,7 +447,10 @@ export default async function PostDetailPage({
             </div>
 
             {post.generatedText ? (
-              <form action={updateGeneratedTextAction} className="mt-2 space-y-4">
+              <form
+                action={updateGeneratedTextAction}
+                className="mt-2 space-y-4"
+              >
                 <input type="hidden" name="postId" value={post.id} />
                 <textarea
                   name="generatedText"
@@ -374,7 +460,8 @@ export default async function PostDetailPage({
                 />
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-xs leading-5 text-slate-500">
-                    แก้ข้อความตรงนี้ได้เลย เช่น ตัดคำ เพิ่ม CTA หรือปรับภาษา แล้วกดบันทึกก่อนนำไปโพสต์จริง
+                    แก้ข้อความตรงนี้ได้เลย เช่น ตัดคำ เพิ่ม CTA หรือปรับภาษา
+                    แล้วกดบันทึกก่อนนำไปโพสต์จริง
                   </p>
                   <SubmitButton
                     pendingText="กำลังบันทึก Preview..."
@@ -386,7 +473,8 @@ export default async function PostDetailPage({
               </form>
             ) : (
               <div className="mt-2 rounded-xl border border-dashed border-slate-700 bg-slate-950 p-5 text-sm text-slate-400">
-                ยังไม่ได้สร้างข้อความ กดปุ่ม “ให้ Gemini เขียนโพสต์” เพื่อสร้าง Preview
+                ยังไม่ได้สร้างข้อความ กดปุ่ม “ให้ Gemini เขียนโพสต์” เพื่อสร้าง
+                Preview
               </div>
             )}
           </div>
@@ -396,7 +484,8 @@ export default async function PostDetailPage({
               Publish Now to Facebook
             </h2>
             <p className="mt-2 text-sm leading-6 text-emerald-100/80">
-              ใช้ข้อความ Preview ล่าสุดที่บันทึกไว้ แล้วโพสต์จริงไปยัง Facebook Page ที่เชื่อมต่อไว้
+              ใช้ข้อความ Preview ล่าสุดที่บันทึกไว้ แล้วโพสต์จริงไปยัง Facebook
+              Page ที่เชื่อมต่อไว้
             </p>
 
             {facebookPage?.pageName ? (
@@ -424,14 +513,18 @@ export default async function PostDetailPage({
             {post.generatedText && !hasConnectedFacebookPage ? (
               <p className="mt-3 text-xs leading-5 text-emerald-100/70">
                 ต้องเชื่อม Facebook Page ก่อนที่หน้า{" "}
-                <Link href="/dashboard/facebook" className="underline underline-offset-4">
+                <Link
+                  href="/dashboard/facebook"
+                  className="underline underline-offset-4"
+                >
                   ตั้งค่าเพจ Facebook
                 </Link>
               </p>
             ) : null}
             {post.status === "posted" ? (
               <p className="mt-3 text-xs leading-5 text-emerald-100/70">
-                โพสต์นี้เผยแพร่ไป Facebook แล้ว ระบบจึงปิดปุ่มโพสต์ซ้ำเพื่อกัน duplicate
+                โพสต์นี้เผยแพร่ไป Facebook แล้ว ระบบจึงปิดปุ่มโพสต์ซ้ำเพื่อกัน
+                duplicate
               </p>
             ) : null}
             {post.status === "posting" ? (
@@ -441,7 +534,90 @@ export default async function PostDetailPage({
             ) : null}
             {post.generatedText && canPublishNow ? (
               <p className="mt-3 text-xs leading-5 text-emerald-100/70">
-                ถ้าแก้ข้อความใน Preview แล้ว ต้องกด “บันทึก Preview” ก่อนกดโพสต์จริง
+                ถ้าแก้ข้อความใน Preview แล้ว ต้องกด “บันทึก Preview”
+                ก่อนกดโพสต์จริง
+              </p>
+            ) : null}
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5">
+            <h2 className="text-lg font-semibold text-amber-100">
+              Schedule Post
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-amber-100/80">
+              เลือกวันและเวลาที่ต้องการโพสต์ โดยใช้เวลาไทย (Asia/Bangkok)
+              ขั้นนี้จะบันทึกคิวไว้ก่อน และจะต่อระบบ Cron ให้โพสต์อัตโนมัติใน
+              Step 21.2
+            </p>
+
+            {post.scheduledAt ? (
+              <div className="mt-3 rounded-xl border border-amber-500/20 bg-slate-950/60 p-3 text-xs leading-5 text-amber-100/80">
+                ตั้งเวลาไว้แล้ว: {formatDate(post.scheduledAt)}
+              </div>
+            ) : null}
+
+            <form
+              action={scheduleGeneratedPostAction}
+              className="mt-4 space-y-4"
+            >
+              <input type="hidden" name="postId" value={post.id} />
+              <div>
+                <label
+                  htmlFor="scheduledAtLocal"
+                  className="text-sm font-medium text-amber-100"
+                >
+                  วันและเวลาที่จะโพสต์
+                </label>
+                <input
+                  id="scheduledAtLocal"
+                  name="scheduledAtLocal"
+                  type="datetime-local"
+                  min={minScheduleInput}
+                  defaultValue={defaultScheduleInput}
+                  disabled={!canSchedulePost}
+                  className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </div>
+              <SubmitButton
+                disabled={!canSchedulePost}
+                pendingText="กำลังบันทึกเวลาตั้งโพสต์..."
+                className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                บันทึกเวลาตั้งโพสต์
+              </SubmitButton>
+            </form>
+
+            {canCancelScheduledPost ? (
+              <form action={cancelScheduledPostAction} className="mt-3">
+                <input type="hidden" name="postId" value={post.id} />
+                <SubmitButton
+                  pendingText="กำลังยกเลิก..."
+                  className="rounded-xl border border-amber-300/60 px-4 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  ยกเลิกเวลาตั้งโพสต์
+                </SubmitButton>
+              </form>
+            ) : null}
+
+            {!post.generatedText ? (
+              <p className="mt-3 text-xs leading-5 text-amber-100/70">
+                ต้องให้ Gemini เขียนหรือบันทึก Preview ก่อนจึงจะตั้งเวลาได้
+              </p>
+            ) : null}
+            {post.generatedText && !hasConnectedFacebookPage ? (
+              <p className="mt-3 text-xs leading-5 text-amber-100/70">
+                ต้องเชื่อม Facebook Page ก่อนจึงจะตั้งเวลาได้
+              </p>
+            ) : null}
+            {post.status === "posted" ? (
+              <p className="mt-3 text-xs leading-5 text-amber-100/70">
+                โพสต์นี้เผยแพร่ไปแล้ว จึงตั้งเวลาใหม่ไม่ได้
+              </p>
+            ) : null}
+            {post.generatedText && canSchedulePost ? (
+              <p className="mt-3 text-xs leading-5 text-amber-100/70">
+                ถ้าแก้ข้อความใน Preview แล้ว ต้องกด “บันทึก Preview”
+                ก่อนบันทึกเวลาตั้งโพสต์
               </p>
             ) : null}
           </div>
@@ -530,7 +706,8 @@ export default async function PostDetailPage({
           <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-6">
             <h2 className="text-xl font-semibold text-red-100">ลบ Draft</h2>
             <p className="mt-2 text-sm leading-6 text-red-100/75">
-              ใช้ลบรายการที่บันทึกซ้ำหรือไม่ต้องการแล้ว ระบบจะลบเฉพาะโพสต์ที่ยังไม่โพสต์จริงเท่านั้น
+              ใช้ลบรายการที่บันทึกซ้ำหรือไม่ต้องการแล้ว
+              ระบบจะลบเฉพาะโพสต์ที่ยังไม่โพสต์จริงเท่านั้น
             </p>
             <form action={deleteDraftPostAction} className="mt-4">
               <input type="hidden" name="postId" value={post.id} />
