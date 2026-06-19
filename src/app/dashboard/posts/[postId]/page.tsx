@@ -5,13 +5,14 @@ import { and, eq } from "drizzle-orm";
 import { DashboardLoadError } from "@/components/dashboard/dashboard-load-error";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { db } from "@/db";
-import { posts, writingProfiles } from "@/db/schema";
+import { facebookPages, posts, writingProfiles } from "@/db/schema";
 import { getDashboardContext } from "@/lib/dashboard-context";
 import { getSessionErrorMessage } from "@/lib/session";
 
 import {
   deleteDraftPostAction,
   generatePostWithGeminiAction,
+  publishGeneratedPostNowAction,
   updateGeneratedTextAction,
 } from "./actions";
 
@@ -26,6 +27,10 @@ type PostDetailPageProps = {
     updated?: string;
     updateError?: string;
     deleteError?: string;
+    published?: string;
+    publishError?: string;
+    facebookPostId?: string;
+    facebookPostUrl?: string;
     message?: string;
   }>;
 };
@@ -56,6 +61,17 @@ const deleteErrorLabels: Record<string, string> = {
   session_failed: "อ่าน session ไม่สำเร็จ กรุณาลองโหลดหน้าใหม่แล้วกดอีกครั้ง",
   not_allowed: "โพสต์สถานะนี้ยังลบไม่ได้",
   delete_failed: "ลบ Draft ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
+};
+
+const publishErrorLabels: Record<string, string> = {
+  session_failed: "อ่าน session ไม่สำเร็จ กรุณาลองโหลดหน้าใหม่แล้วกดอีกครั้ง",
+  content_required: "ยังไม่มี Preview สำหรับโพสต์ กรุณาให้ Gemini เขียนหรือบันทึกข้อความก่อน",
+  facebook_not_connected:
+    "ยังไม่ได้เชื่อม Facebook Page หรือยังไม่มี Page Access Token กรุณาไปตั้งค่า Facebook Page ก่อน",
+  already_posting: "โพสต์นี้กำลังถูกส่งไป Facebook อยู่ กรุณารอสักครู่แล้วโหลดหน้าใหม่",
+  already_posted: "โพสต์นี้ถูกเผยแพร่ไป Facebook แล้ว ระบบไม่โพสต์ซ้ำให้อัตโนมัติ",
+  facebook_failed:
+    "โพสต์ไป Facebook ไม่สำเร็จ กรุณาเช็ก Page Access Token, permission หรือสถานะ Meta App แล้วลองใหม่",
 };
 
 const deletableStatuses = new Set(["draft", "generated", "error", "cancelled"]);
@@ -110,6 +126,10 @@ export default async function PostDetailPage({
   const query = await searchParams;
 
   let post;
+  let facebookPage: Pick<
+    typeof facebookPages.$inferSelect,
+    "id" | "pageName" | "pageId" | "accessTokenEncrypted" | "status"
+  > | null = null;
 
   try {
     [post] = await db
@@ -142,6 +162,20 @@ export default async function PostDetailPage({
         ),
       )
       .limit(1);
+
+    const [selectedFacebookPage] = await db
+      .select({
+        id: facebookPages.id,
+        pageName: facebookPages.pageName,
+        pageId: facebookPages.pageId,
+        accessTokenEncrypted: facebookPages.accessTokenEncrypted,
+        status: facebookPages.status,
+      })
+      .from(facebookPages)
+      .where(eq(facebookPages.workspaceId, currentMembership.workspaceId))
+      .limit(1);
+
+    facebookPage = selectedFacebookPage ?? null;
   } catch (postError) {
     return (
       <DashboardLoadError
@@ -157,6 +191,16 @@ export default async function PostDetailPage({
 
   const approxWordCount = countApproxWords(post.generatedText);
   const canDeletePost = deletableStatuses.has(post.status);
+  const hasConnectedFacebookPage = Boolean(
+    facebookPage?.pageId && facebookPage.accessTokenEncrypted,
+  );
+  const canPublishNow = Boolean(
+    post.generatedText &&
+      hasConnectedFacebookPage &&
+      post.status !== "posted" &&
+      post.status !== "posting",
+  );
+  const publishedUrl = query.facebookPostUrl || post.facebookPostUrl;
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -200,6 +244,27 @@ export default async function PostDetailPage({
         </div>
       ) : null}
 
+      {query.published === "1" ? (
+        <div className="mt-6 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+          <div>โพสต์ Preview ไปยัง Facebook Page สำเร็จแล้ว</div>
+          {query.facebookPostId || post.facebookPostId ? (
+            <div className="mt-2 text-xs text-emerald-100/80">
+              Facebook Post ID: {query.facebookPostId || post.facebookPostId}
+            </div>
+          ) : null}
+          {publishedUrl ? (
+            <a
+              href={publishedUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 inline-flex text-sm font-semibold text-emerald-100 underline underline-offset-4"
+            >
+              เปิดโพสต์บน Facebook
+            </a>
+          ) : null}
+        </div>
+      ) : null}
+
       {query.generateError ? (
         <div className="mt-6 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
           <div>
@@ -225,6 +290,20 @@ export default async function PostDetailPage({
         <div className="mt-6 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
           {deleteErrorLabels[query.deleteError] ??
             "ลบ Draft ไม่สำเร็จ กรุณาลองใหม่"}
+        </div>
+      ) : null}
+
+      {query.publishError ? (
+        <div className="mt-6 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+          <div>
+            {publishErrorLabels[query.publishError] ??
+              "โพสต์ไป Facebook ไม่สำเร็จ กรุณาลองใหม่"}
+          </div>
+          {query.message || post.errorMessage ? (
+            <pre className="mt-3 whitespace-pre-wrap rounded-lg bg-red-950/50 p-3 text-xs leading-5 text-red-100/90">
+              {query.message || post.errorMessage}
+            </pre>
+          ) : null}
         </div>
       ) : null}
 
@@ -311,6 +390,61 @@ export default async function PostDetailPage({
               </div>
             )}
           </div>
+
+          <div className="mt-6 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5">
+            <h2 className="text-lg font-semibold text-emerald-100">
+              Publish Now to Facebook
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-emerald-100/80">
+              ใช้ข้อความ Preview ล่าสุดที่บันทึกไว้ แล้วโพสต์จริงไปยัง Facebook Page ที่เชื่อมต่อไว้
+            </p>
+
+            {facebookPage?.pageName ? (
+              <div className="mt-3 rounded-xl border border-emerald-500/20 bg-slate-950/60 p-3 text-xs leading-5 text-emerald-100/80">
+                เพจปลายทาง: {facebookPage.pageName}
+              </div>
+            ) : null}
+
+            <form action={publishGeneratedPostNowAction} className="mt-4">
+              <input type="hidden" name="postId" value={post.id} />
+              <SubmitButton
+                disabled={!canPublishNow}
+                pendingText="กำลังโพสต์ไป Facebook..."
+                className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                โพสต์ Preview นี้ไป Facebook Page
+              </SubmitButton>
+            </form>
+
+            {!post.generatedText ? (
+              <p className="mt-3 text-xs leading-5 text-emerald-100/70">
+                ต้องให้ Gemini เขียนหรือบันทึก Preview ก่อนจึงจะโพสต์จริงได้
+              </p>
+            ) : null}
+            {post.generatedText && !hasConnectedFacebookPage ? (
+              <p className="mt-3 text-xs leading-5 text-emerald-100/70">
+                ต้องเชื่อม Facebook Page ก่อนที่หน้า{" "}
+                <Link href="/dashboard/facebook" className="underline underline-offset-4">
+                  ตั้งค่าเพจ Facebook
+                </Link>
+              </p>
+            ) : null}
+            {post.status === "posted" ? (
+              <p className="mt-3 text-xs leading-5 text-emerald-100/70">
+                โพสต์นี้เผยแพร่ไป Facebook แล้ว ระบบจึงปิดปุ่มโพสต์ซ้ำเพื่อกัน duplicate
+              </p>
+            ) : null}
+            {post.status === "posting" ? (
+              <p className="mt-3 text-xs leading-5 text-emerald-100/70">
+                โพสต์นี้กำลังถูกส่งไป Facebook กรุณารอสักครู่แล้วโหลดหน้าใหม่
+              </p>
+            ) : null}
+            {post.generatedText && canPublishNow ? (
+              <p className="mt-3 text-xs leading-5 text-emerald-100/70">
+                ถ้าแก้ข้อความใน Preview แล้ว ต้องกด “บันทึก Preview” ก่อนกดโพสต์จริง
+              </p>
+            ) : null}
+          </div>
         </article>
 
         <aside className="space-y-6">
@@ -332,6 +466,27 @@ export default async function PostDetailPage({
               <div>
                 <div className="text-slate-500">โพสต์เมื่อ</div>
                 <div>{formatDate(post.postedAt)}</div>
+              </div>
+              <div>
+                <div className="text-slate-500">Facebook Post ID</div>
+                <div className="break-all font-mono text-xs">
+                  {post.facebookPostId || "-"}
+                </div>
+              </div>
+              <div>
+                <div className="text-slate-500">Facebook URL</div>
+                {post.facebookPostUrl ? (
+                  <a
+                    href={post.facebookPostUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="break-all text-blue-300 hover:text-blue-200"
+                  >
+                    เปิดโพสต์
+                  </a>
+                ) : (
+                  <div>-</div>
+                )}
               </div>
             </div>
           </div>

@@ -19,6 +19,7 @@ export type PublishFacebookPostInput = {
 
 export type PublishFacebookPostResult = {
   id: string;
+  permalinkUrl: string | null;
 };
 
 export class FacebookApiError extends Error {
@@ -60,6 +61,47 @@ function buildFacebookApiError(payload: unknown, status: number) {
     details || `Facebook API request failed with HTTP ${status}`,
     errorPayload,
   );
+}
+
+export function buildFacebookPostUrl(facebookPostId: string) {
+  const normalizedPostId = facebookPostId.trim();
+
+  if (!normalizedPostId) {
+    return "";
+  }
+
+  return `https://www.facebook.com/${encodeURIComponent(normalizedPostId)}`;
+}
+
+async function getFacebookPostPermalinkUrl({
+  facebookPostId,
+  pageAccessToken,
+}: {
+  facebookPostId: string;
+  pageAccessToken: string;
+}) {
+  const body = new URLSearchParams({
+    fields: "permalink_url",
+    access_token: pageAccessToken,
+  });
+
+  const response = await fetch(
+    `${GRAPH_API_BASE_URL}/${encodeURIComponent(facebookPostId)}?${body.toString()}`,
+    {
+      method: "GET",
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const payload = (await response.json().catch(() => null)) as
+    | { permalink_url?: string }
+    | null;
+
+  return payload?.permalink_url?.trim() || null;
 }
 
 export async function publishTextToFacebookPage({
@@ -104,7 +146,13 @@ export async function publishTextToFacebookPage({
     throw new FacebookApiError("Facebook API did not return a post id");
   }
 
+  const permalinkUrl = await getFacebookPostPermalinkUrl({
+    facebookPostId: payload.id,
+    pageAccessToken: normalizedAccessToken,
+  });
+
   return {
     id: payload.id,
+    permalinkUrl,
   };
 }

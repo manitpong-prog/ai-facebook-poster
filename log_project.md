@@ -1,4 +1,4 @@
-﻿# AI Facebook Poster - Project Log
+# AI Facebook Poster - Project Log
 
 ## Project Goal
 ระบบช่วยเขียนโพสต์ Facebook Page ด้วย AI จากหัวข้อสั้น ๆ รองรับ Preview, แก้ไข, โพสต์ทันที, ตั้งเวลาโพสต์ และต่อยอดเป็น SaaS ให้ผู้ใช้อื่นเชื่อมเพจตัวเองได้ในอนาคต
@@ -11,7 +11,7 @@
 - Neon Postgres
 - Drizzle ORM
 - Better Auth
-- OpenAI Responses API
+- Gemini API via `@google/genai`
 - Meta Facebook Pages API
 - Vercel Cron
 - GitHub Desktop
@@ -639,3 +639,92 @@ npx tsc --noEmit
 2. Regenerate a fresh Page Access Token after test flow works, then save the new token in the app
 3. Step 20: Add “Publish Now” on the post detail page so generated Preview text can be posted to the connected Facebook Page
 4. Step 21: Add scheduled publishing and Vercel Cron
+
+---
+
+## 2026-06-19 - Step 20 Publish Generated Preview to Facebook Page
+
+### What was done
+- Added a real “Publish Now to Facebook” flow on the post detail page at `/dashboard/posts/[postId]`
+- Added a server action that publishes the saved generated Preview text to the connected Facebook Page
+- Reused the Facebook Page settings saved in Step 19 from the existing `facebook_pages` table
+- Updated post lifecycle when publishing:
+  - `posting` while the app is sending to Meta
+  - `posted` after Meta returns a Facebook Post ID
+  - `error` if Meta rejects the post or the token/permission has a problem
+- Saved Facebook publish metadata back to the `posts` table:
+  - `facebook_page_id`
+  - `publish_mode = post_now`
+  - `posting_started_at`
+  - `posted_at`
+  - `facebook_post_id`
+  - `facebook_post_url`
+  - `error_message`
+- Added duplicate-post protection by disabling/denying publish for posts that already have `posted` status or an existing Facebook Post ID
+- Added guidance on the post detail page reminding the user to click “บันทึก Preview” before publishing if they edited the textarea
+- Updated the posts list to show when a post already has a Facebook link
+- Extended the Facebook API helper to fetch `permalink_url` after creating a post when available, with a fallback Facebook post URL built from the returned Post ID
+
+### Files updated
+- src/app/dashboard/posts/[postId]/actions.ts
+- src/app/dashboard/posts/[postId]/page.tsx
+- src/app/dashboard/posts/page.tsx
+- src/app/dashboard/facebook/page.tsx
+- src/lib/facebook.ts
+- log_project.md
+
+### Commands run
+```powershell
+npm install
+npm run lint
+npx tsc --noEmit
+npm run build
+```
+
+### Validation result
+- `npm run lint` passed
+- `npx tsc --noEmit` passed
+- `npm run build` compiled successfully, then the sandbox timed out while Next.js was still in its TypeScript/build analysis step. This appears to be the same sandbox timeout behavior seen in Step 19, not a TypeScript compile error, because standalone `npx tsc --noEmit` passed.
+
+### Database / Migration
+- No migration required
+- Existing `posts` columns are used:
+  - `facebook_page_id`
+  - `publish_mode`
+  - `posting_started_at`
+  - `posted_at`
+  - `facebook_post_id`
+  - `facebook_post_url`
+  - `error_message`
+  - `status`
+  - `updated_at`
+- Existing `facebook_pages` columns are used:
+  - `page_id`
+  - `access_token_encrypted`
+  - `page_name`
+
+### Environment variables
+- No new environment variables required
+- The flow uses the Page Access Token saved through `/dashboard/facebook`
+
+### Current status
+- Facebook Page connection/test post flow exists
+- Generated Preview text can now be posted directly to the connected Facebook Page from the post detail page
+- After a successful publish, the post is marked as `posted` and stores the Facebook Post ID/URL
+
+### Known issues
+- The app still stores the Page Access Token as dev-only plain text in `facebook_pages.access_token_encrypted`
+- Facebook posts created while the Meta App is in Development mode may only be visible to app/page roles, which is expected during testing
+- There is still no scheduled publishing flow yet
+- There is no image upload/media posting flow yet; Step 20 publishes text-only posts
+
+### Next steps
+1. Test Step 20 locally:
+   - Confirm `/dashboard/facebook` has a valid Page ID and Page Access Token
+   - Open a generated post detail page
+   - Edit Preview if needed
+   - Click “บันทึก Preview”
+   - Click “โพสต์ Preview นี้ไป Facebook Page”
+   - Confirm status changes to `posted` and the Facebook Post ID/URL is saved
+2. Commit Step 20 after local test passes
+3. Step 21: Add scheduled posts and Vercel Cron

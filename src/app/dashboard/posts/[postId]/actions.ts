@@ -5,8 +5,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { db } from "@/db";
-import { aiUsageLogs, posts, writingProfiles } from "@/db/schema";
+import { aiUsageLogs, facebookPages, posts, writingProfiles } from "@/db/schema";
 import { generateFacebookPostWithGemini } from "@/lib/ai/gemini";
+import { buildFacebookPostUrl, publishTextToFacebookPage } from "@/lib/facebook";
 import { getSessionResult } from "@/lib/session";
 import { ensureDefaultWorkspace } from "@/lib/workspace";
 
@@ -82,8 +83,10 @@ async function getOwnedPost(postId: string) {
       workspaceId: posts.workspaceId,
       topic: posts.topic,
       styleOverride: posts.styleOverride,
+      generatedText: posts.generatedText,
       writingProfileId: posts.writingProfileId,
       status: posts.status,
+      facebookPostId: posts.facebookPostId,
     })
     .from(posts)
     .where(
@@ -296,4 +299,137 @@ export async function deleteDraftPostAction(formData: FormData) {
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/posts");
   redirect("/dashboard/posts?deleted=1");
+}
+
+export async function publishGeneratedPostNowAction(formData: FormData) {
+  const postId = getPostId(formData);
+
+  if (!postId) {
+    redirect("/dashboard/posts?error=post_not_found");
+  }
+
+  const ownedPost = await getOwnedPost(postId);
+
+  if (ownedPost.sessionError) {
+    redirect(buildRedirectPath(postId, { publishError: "session_failed" }));
+  }
+
+  if (!ownedPost.session) {
+    redirect("/login");
+  }
+
+  if (!ownedPost.currentMembership || !ownedPost.post) {
+    redirect("/dashboard/posts?error=post_not_found");
+  }
+
+  const { currentMembership, post } = ownedPost;
+  const generatedText = post.generatedText?.trim() ?? "";
+
+  if (generatedText.length < 3) {
+    redirect(buildRedirectPath(postId, { publishError: "content_required" }));
+  }
+
+  if (post.status === "posting") {
+    redirect(buildRedirectPath(postId, { publishError: "already_posting" }));
+  }
+
+  if (post.status === "posted" || post.facebookPostId) {
+    redirect(buildRedirectPath(postId, { publishError: "already_posted" }));
+  }
+
+  const [savedPage] = await db
+    .select()
+    .from(facebookPages)
+    .where(eq(facebookPages.workspaceId, currentMembership.workspaceId))
+    .limit(1);
+
+  if (!savedPage || !savedPage.pageId || !savedPage.accessTokenEncrypted) {
+    redirect(buildRedirectPath(postId, { publishError: "facebook_not_connected" }));
+  }
+
+  let facebookPostId = "";
+  let facebookPostUrl = "";
+
+  try {
+    await db
+      .update(posts)
+      .set({
+        facebookPageId: savedPage.id,
+        status: "posting",
+        publishMode: "post_now",
+        postingStartedAt: new Date(),
+        errorMessage: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(posts.id, post.id),
+          eq(posts.workspaceId, currentMembership.workspaceId),
+        ),
+      );
+
+    const result = await publishTextToFacebookPage({
+      pageId: savedPage.pageId,
+      pageAccessToken: savedPage.accessTokenEncrypted,
+      message: generatedText,
+    });
+
+    facebookPostId = result.id;
+    facebookPostUrl = result.permalinkUrl || buildFacebookPostUrl(result.id);
+
+    await db
+      .update(posts)
+      .set({
+        facebookPostId,
+        facebookPostUrl,
+        status: "posted",
+        postedAt: new Date(),
+        errorMessage: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(posts.id, post.id),
+          eq(posts.workspaceId, currentMembership.workspaceId),
+        ),
+      );
+  } catch (error) {
+    const message = getActionErrorMessage(error);
+    console.error("Failed to publish generated post to Facebook:", error);
+
+    await db
+      .update(posts)
+      .set({
+        status: "error",
+        errorMessage: message,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(posts.id, post.id),
+          eq(posts.workspaceId, currentMembership.workspaceId),
+        ),
+      );
+
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/posts");
+    revalidatePath(`/dashboard/posts/${postId}`);
+    redirect(
+      buildRedirectPath(postId, {
+        publishError: "facebook_failed",
+        message: truncateForUrl(message),
+      }),
+    );
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/posts");
+  revalidatePath(`/dashboard/posts/${postId}`);
+  redirect(
+    buildRedirectPath(postId, {
+      published: "1",
+      facebookPostId,
+      facebookPostUrl,
+    }),
+  );
 }

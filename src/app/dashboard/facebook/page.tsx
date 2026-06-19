@@ -7,6 +7,7 @@ import { SubmitButton } from "@/components/forms/submit-button";
 import { db } from "@/db";
 import { facebookPages } from "@/db/schema";
 import { getDashboardContext } from "@/lib/dashboard-context";
+import { buildFacebookPostUrl } from "@/lib/facebook";
 import { getSessionErrorMessage } from "@/lib/session";
 
 import {
@@ -80,14 +81,6 @@ function maskToken(token: string | null) {
   return `${token.slice(0, 10)}...${token.slice(-6)} (${token.length} ตัวอักษร)`;
 }
 
-function buildFacebookPostUrl(facebookPostId: string | undefined) {
-  if (!facebookPostId) {
-    return "";
-  }
-
-  return `https://www.facebook.com/${facebookPostId}`;
-}
-
 export default async function FacebookPage({ searchParams }: FacebookPageProps) {
   const { session, currentMembership, error } = await getDashboardContext();
 
@@ -129,7 +122,9 @@ export default async function FacebookPage({ searchParams }: FacebookPageProps) 
   const status = facebookPage?.status ?? "not_connected";
   const savedMessage = query?.saved === "1";
   const testedMessage = query?.tested === "1";
-  const postUrl = buildFacebookPostUrl(query?.facebookPostId);
+  const postUrl = query?.facebookPostId
+    ? buildFacebookPostUrl(query.facebookPostId)
+    : "";
 
   const saveErrorMessage = query?.saveError
     ? saveErrorLabels[query.saveError] ?? "บันทึกไม่สำเร็จ กรุณาลองใหม่"
