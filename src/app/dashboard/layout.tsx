@@ -6,6 +6,9 @@ import { DashboardNav } from "@/components/dashboard/dashboard-nav";
 import { getDashboardContext } from "@/lib/dashboard-context";
 import { getSessionErrorMessage } from "@/lib/session";
 
+
+export const dynamic = "force-dynamic";
+
 export default async function DashboardLayout({
   children,
 }: Readonly<{

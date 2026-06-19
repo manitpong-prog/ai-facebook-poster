@@ -24,6 +24,11 @@ const navItems = [
     label: "Writing Style",
     description: "สไตล์การเขียน",
   },
+  {
+    href: "/dashboard/facebook",
+    label: "Facebook Page",
+    description: "เชื่อมต่อเพจ",
+  },
 ];
 
 function isNavItemActive(pathname: string, href: string) {

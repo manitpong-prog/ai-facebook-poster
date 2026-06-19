@@ -12,7 +12,6 @@ if (!databaseUrl) {
 declare global {
   // Keep one local dev connection client across hot reloads.
   // This avoids creating many short-lived clients when Next.js reloads files.
-  // eslint-disable-next-line no-var
   var postgresClient: ReturnType<typeof postgres> | undefined;
 }
 

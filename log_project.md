@@ -557,3 +557,85 @@ npm run dev
 2. Test delete duplicate Draft
 3. Test Generate → Edit Preview → Save
 4. Build Facebook Page Settings and Publish Now flow
+
+---
+
+## 2026-06-19 - Step 19 Facebook Page Settings and Test Post
+
+### What was done
+- Added a new Dashboard page for Facebook Page connection settings at `/dashboard/facebook`
+- Added a Dashboard navigation item named “Facebook Page”
+- Added a save form for:
+  - Page Name
+  - Page ID
+  - Page Access Token
+- Added a connection status card showing page name, page id, masked token, status, and last test time
+- Added a real “โพสต์ทดสอบไปที่เพจ” button that posts to the saved Facebook Page using the Meta Pages API endpoint `POST /{page-id}/feed`
+- Added a reusable Facebook API helper for posting plain text to a Facebook Page
+- Added server actions for saving Facebook Page settings and testing a real Facebook post
+- Kept the existing database schema and reused the existing `facebook_pages` table
+- Removed `next/font/google` usage and switched to local CSS fallback fonts so local builds do not fail when Google Fonts cannot be fetched in restricted environments
+- Marked the dashboard layout as dynamic so dashboard pages remain server/session driven instead of being treated as static pages during build analysis
+- Removed an unused ESLint directive from the database client file
+
+### Files created
+- src/app/dashboard/facebook/page.tsx
+- src/app/dashboard/facebook/actions.ts
+- src/lib/facebook.ts
+
+### Files updated
+- src/components/dashboard/dashboard-nav.tsx
+- src/app/dashboard/layout.tsx
+- src/app/layout.tsx
+- src/app/globals.css
+- src/db/index.ts
+- log_project.md
+
+### Commands run
+```powershell
+npm install
+npm run lint
+npx tsc --noEmit
+```
+
+### Validation result
+- `npm run lint` passed
+- `npx tsc --noEmit` passed
+- `npm run build` progressed past compile and TypeScript, but the sandbox command timed out while Next.js was collecting page data. Before the font change, build failed on Google Fonts fetching; that issue is now fixed.
+
+### Database / Migration
+- No migration required
+- Existing `facebook_pages` table is used
+- Existing columns used:
+  - `workspace_id`
+  - `page_name`
+  - `page_id`
+  - `access_token_encrypted`
+  - `status`
+  - `last_tested_at`
+  - `updated_at`
+
+### Environment variables
+- No new environment variables required for Step 19
+- Facebook Page settings are saved through the UI into the database
+- Current MVP stores the Page Access Token in `facebook_pages.access_token_encrypted` as dev-only plain text, despite the column name. Add real encryption before production use.
+
+### Current status
+- User has confirmed Facebook API posting works through PowerShell
+- User has confirmed Facebook API posting works through Graph API Explorer after switching to the Facebook Page token/context
+- The app now has a page to save Facebook Page settings and test a real post from inside the dashboard
+
+### Known issues
+- The Page Access Token should be regenerated after testing because earlier test tokens were pasted into chat while debugging
+- Token encryption is not implemented yet
+- The generated post detail page still does not have a “Publish Now” button connected to Facebook
+- Scheduled publishing is not implemented yet
+
+### Next steps
+1. Test `/dashboard/facebook` locally:
+   - Save Page Name, Page ID, and Page Access Token
+   - Click “โพสต์ทดสอบไปที่เพจ”
+   - Confirm the post appears on Facebook
+2. Regenerate a fresh Page Access Token after test flow works, then save the new token in the app
+3. Step 20: Add “Publish Now” on the post detail page so generated Preview text can be posted to the connected Facebook Page
+4. Step 21: Add scheduled publishing and Vercel Cron
