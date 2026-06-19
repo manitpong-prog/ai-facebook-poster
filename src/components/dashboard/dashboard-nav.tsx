@@ -20,6 +20,16 @@ const navItems = [
     description: "รายการโพสต์",
   },
   {
+    href: "/dashboard/topics",
+    label: "Topic Queue",
+    description: "คลังหัวข้อ AI",
+  },
+  {
+    href: "/dashboard/autopilot",
+    label: "Auto Pilot",
+    description: "ตั้งเวลา AI อัตโนมัติ",
+  },
+  {
     href: "/dashboard/style",
     label: "Writing Style",
     description: "สไตล์การเขียน",

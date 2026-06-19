@@ -942,3 +942,439 @@ http://localhost:3000/api/cron/publish-scheduled
 2. Commit Step 21.2A after local test passes.
 3. Step 21.2B: add `vercel.json` and configure Vercel Cron to call `/api/cron/publish-scheduled` automatically every 5 or 10 minutes.
 4. Later: add a retry strategy / stuck `posting` recovery screen if needed.
+
+---
+
+## Step 21.2B - Secure Cron + Vercel Cron config
+
+### Goal
+Make the scheduled-post publisher ready for automatic production execution while still supporting external cron services.
+
+### What was added
+- Added `vercel.json` at the project root.
+- Configured Vercel Cron to call:
+  - `/api/cron/publish-scheduled`
+  - every 10 minutes with cron expression `*/10 * * * *`
+- Kept support for external cron services such as cron-job.org by allowing:
+  - `?secret=<CRON_SECRET>`
+- Kept support for Vercel's automatic Authorization header:
+  - `Authorization: Bearer <CRON_SECRET>`
+
+### What was improved
+- Refined Cron auth handling in `src/app/api/cron/publish-scheduled/route.ts`.
+- Production now returns clearer errors when `CRON_SECRET` is missing or invalid.
+- Successful cron responses now include `authMode`, which helps confirm whether the request used:
+  - `authorization-header`
+  - `secret-query`
+  - `local-dev-no-secret`
+- Updated `.env.local` comments to explain that `CRON_SECRET` can stay empty locally but should be set in production.
+- Rewrote `README.md` with project-specific local dev, environment, Vercel Cron, and external cron instructions.
+
+### Files added
+- `vercel.json`
+
+### Files updated
+- `src/app/api/cron/publish-scheduled/route.ts`
+- `.env.local`
+- `README.md`
+- `log_project.md`
+
+### Database / Migration
+- No migration required.
+- Existing scheduled post columns are still used.
+
+### Environment variables
+Set this in Vercel before relying on production cron:
+
+```text
+CRON_SECRET=<long-random-string>
+```
+
+Local development can keep:
+
+```text
+CRON_SECRET=
+```
+
+### Vercel setup notes
+1. Deploy this version to Vercel.
+2. In Vercel Project Settings → Environment Variables, add `CRON_SECRET`.
+3. Redeploy after adding the environment variable.
+4. Vercel Cron will call `/api/cron/publish-scheduled` automatically.
+5. If frequent Vercel Cron is not available on the current plan, use an external cron service to call:
+
+```text
+https://YOUR_DOMAIN/api/cron/publish-scheduled?secret=YOUR_CRON_SECRET
+```
+
+### How to test locally
+Run the app:
+
+```powershell
+npm run dev
+```
+
+Then open:
+
+```text
+http://localhost:3000/api/cron/publish-scheduled
+```
+
+Expected result includes:
+
+```json
+{
+  "ok": true,
+  "authMode": "local-dev-no-secret"
+}
+```
+
+### How to test production manually after deploy
+Use browser or PowerShell with query secret:
+
+```text
+https://YOUR_DOMAIN/api/cron/publish-scheduled?secret=YOUR_CRON_SECRET
+```
+
+Or use an Authorization header:
+
+```powershell
+Invoke-RestMethod -Method Get -Uri "https://YOUR_DOMAIN/api/cron/publish-scheduled" -Headers @{ Authorization = "Bearer YOUR_CRON_SECRET" }
+```
+
+### Current status
+- Manual scheduled publisher is still working.
+- Endpoint is now protected for production.
+- Vercel Cron configuration is present.
+- External cron fallback is supported.
+
+### Next steps
+1. Test a production deployment with `CRON_SECRET` set.
+2. If Vercel Cron frequency is not enough for the current plan, configure cron-job.org or another external scheduler.
+3. Step 22.1: build Topic Queue so the user can add many future content ideas.
+4. Step 22.2: add Auto Writer so Gemini can select a queued topic and draft a post automatically.
+5. Step 22.3: combine Auto Writer + Auto Publish to generate and publish posts on a daily/every-2-days schedule.
+
+### Validation result after implementation
+Commands run in sandbox:
+
+```powershell
+npm ci --prefer-offline --no-audit --no-fund --ignore-scripts --silent
+npm run lint
+npx tsc --noEmit
+npm run build
+```
+
+Result:
+- `npm run lint` passed.
+- `npx tsc --noEmit` passed.
+- `npm run build` started the optimized production build but timed out in the sandbox at `Creating an optimized production build ...`. No TypeScript errors were shown before the timeout. This is consistent with previous sandbox build-time limitations.
+
+---
+
+## Step 22.1 - Topic Queue
+
+### Goal
+Start the Auto Content Queue / Autopilot direction by adding a place to store many future post ideas before AI writing automation is added.
+
+### What was added
+- Added a new dashboard page:
+  - `/dashboard/topics`
+- The user can paste many topics at once, one topic per line.
+- The user can add an optional shared note/instruction for the batch of topics.
+- Topics are saved into a new `content_topics` table.
+- Topic statuses are supported:
+  - `active` = ready to use
+  - `paused` = keep for later but do not use yet
+  - `used` = already converted into a draft
+  - `archived` = hidden/retired from future automation
+- The Topic Queue page shows counts by status.
+- The user can manually create a Draft from a topic to test the future automation flow.
+- When a topic is converted to a Draft, the topic is marked `used`, linked to the created post, and `used_at` is saved.
+- Added Topic Queue to the dashboard navigation.
+- Added a Dashboard quick link to start from Topic Queue.
+
+### Files added
+- `src/app/dashboard/topics/page.tsx`
+- `src/app/dashboard/topics/actions.ts`
+- `drizzle/0002_optimal_grim_reaper.sql`
+- `drizzle/meta/0002_snapshot.json`
+
+### Files updated
+- `src/db/schema.ts`
+- `src/components/dashboard/dashboard-nav.tsx`
+- `src/app/dashboard/page.tsx`
+- `README.md`
+- `log_project.md`
+- `drizzle/meta/_journal.json`
+
+### Database / Migration
+This step requires a new database migration.
+
+New enum:
+
+```text
+content_topic_status = active | paused | used | archived
+```
+
+New table:
+
+```text
+content_topics
+```
+
+Important columns:
+
+```text
+id
+workspace_id
+created_post_id
+title
+notes
+status
+priority
+used_at
+created_by_user_id
+created_at
+updated_at
+```
+
+Run after extracting this ZIP:
+
+```powershell
+npm install
+npm run db:migrate
+npm run dev
+```
+
+### How to test
+1. Open `/dashboard/topics`.
+2. Paste multiple topic ideas, one per line.
+3. Click `เพิ่มเข้าคลังหัวข้อ`.
+4. Confirm the topics appear in the list with status `รอใช้`.
+5. Try `พักไว้ก่อน`, `เปิดใช้งาน`, and `เก็บถาวร`.
+6. For an active topic, click `สร้าง Draft`.
+7. Confirm the app redirects to the new post detail page.
+8. Go back to `/dashboard/topics` and confirm that topic is now `ใช้แล้ว` and links back to the created Draft.
+
+### Current status
+- Topic Queue is now available.
+- The app can store future ideas and manually convert one topic into a Draft.
+- This prepares the data model and UX for the Auto Writer.
+
+### Known issues / intentional limitations
+- Auto Writer is not implemented yet.
+- The app does not automatically pick a topic from the queue yet.
+- The app does not automatically generate and publish from the queue yet.
+- Topic ordering uses a simple `priority` value for future automation, but there is no drag-and-drop UI yet.
+
+### Next steps
+1. Test Step 22.1 locally and commit if it passes.
+2. Step 22.2: add Auto Writer that selects one active topic and asks Gemini to create a Draft automatically.
+3. Step 22.3: add automation settings for frequency such as every day / every 2 days and combine Auto Writer + scheduled publishing.
+
+### Validation result after implementation
+Commands run in sandbox:
+
+```powershell
+npm install --no-audit --no-fund
+npm run db:generate
+npm run lint
+npx tsc --noEmit
+npm run build
+```
+
+Result:
+- `npm run db:generate` created `drizzle/0002_optimal_grim_reaper.sql` and `drizzle/meta/0002_snapshot.json`.
+- `npm run lint` passed.
+- `npx tsc --noEmit` passed.
+- `npm run build` compiled successfully, then timed out in the sandbox during the later TypeScript/build analysis phase. No TypeScript errors were shown before the timeout.
+
+
+---
+
+## Step 22.2 - Auto Writer from Topic Queue
+
+### Goal
+Let the user keep a queue of future topics, then click one button to have the system pick the next active topic and ask Gemini to write the Facebook post automatically.
+
+### What was added
+- Added an Auto Writer flow on `/dashboard/topics`.
+- Added a new button: `ให้ AI เขียนจากหัวข้อถัดไป`.
+- The button selects the next `active` topic by queue order.
+- The selected topic is temporarily claimed as `paused` while Gemini is writing to reduce duplicate generation from double clicks.
+- The app creates a new post from that topic.
+- Gemini writes the post immediately and saves the result into `posts.generated_text`.
+- The new post status becomes `generated`.
+- The topic becomes `used`, stores `used_at`, and links to the created post via `created_post_id`.
+- AI usage is recorded in `ai_usage_logs`.
+- If Gemini fails, the topic is restored to `active` and the created post, if any, is marked `error`.
+
+### Files added
+- `src/lib/topic-auto-writer.ts`
+
+### Files updated
+- `src/app/dashboard/topics/actions.ts`
+- `src/app/dashboard/topics/page.tsx`
+- `README.md`
+- `log_project.md`
+
+### Database / Migration
+No new migration is required in this step.
+
+This step reuses existing tables:
+
+```text
+content_topics
+posts
+ai_usage_logs
+writing_profiles
+```
+
+### How to test
+1. Open `/dashboard/topics`.
+2. Add several active topics if there are none.
+3. Click `ให้ AI เขียนจากหัวข้อถัดไป`.
+4. Wait for Gemini to generate the post.
+5. Confirm the app redirects to `/dashboard/posts/[postId]`.
+6. Confirm the Preview already contains AI-generated text.
+7. Go back to `/dashboard/topics`.
+8. Confirm the selected topic is now `ใช้แล้ว` and links to the generated post.
+
+### Current status
+- Topic Queue can now create AI-generated posts in one click.
+- This is still manual-trigger Auto Writer, which is safer for testing quality before fully automatic publishing.
+
+### Known issues / intentional limitations
+- The system does not yet run Auto Writer on a schedule.
+- The system does not yet combine Auto Writer + publish-to-Facebook in one automatic cron run.
+- Topic ordering is based on `priority` then creation time. There is no drag-and-drop reordering UI yet.
+
+### Next steps
+1. Test Step 22.2 locally and commit if it passes.
+2. Step 22.3: add automation settings for frequency such as every day / every 2 days.
+3. Step 22.4: connect scheduled automation so the system can pick a topic, generate a post, and optionally publish automatically.
+
+### Validation result after implementation
+Commands run in sandbox:
+
+```powershell
+npm install --no-audit --no-fund
+npm run lint
+npx tsc --noEmit
+npm run build
+```
+
+Result:
+- `npm run lint` passed.
+- `npx tsc --noEmit` passed.
+- `npm run build` compiled successfully, finished TypeScript, generated static pages, and reached final page optimization. The sandbox command then timed out after the successful build output was already shown.
+
+---
+
+## Step 22.3 - Auto Pilot Settings and Cron Integration
+
+### Goal
+Move the app from manual Auto Writer toward true autopilot: the user can add many topics, set a frequency and time, then let cron pick the next topic, ask Gemini to write it, and optionally post it to Facebook automatically.
+
+### What was added
+- Added new dashboard page `/dashboard/autopilot`.
+- Added Auto Pilot settings:
+  - Enable / disable Auto Pilot.
+  - Mode: `draft_only` or `auto_publish`.
+  - Frequency: every 1, 2, 3, or 7 days.
+  - Post/write time using Thailand timezone `Asia/Bangkok`.
+- Added a manual test button: `รัน Auto Pilot ตอนนี้`.
+- Added readiness checks for active topics and connected Facebook Page.
+- Added status display for next run, last run, last result, and last error.
+- Added `automation_settings` table to store one Auto Pilot configuration per workspace.
+- Added `src/lib/auto-pilot.ts` for reusable Auto Pilot job logic.
+- Updated `/api/cron/publish-scheduled` so one cron request now runs:
+  1. due Auto Pilot jobs, then
+  2. due scheduled post publishing.
+- Added `skipAutoPilot=1` query option for manual testing of scheduled publishing only.
+- Added Auto Pilot link to the dashboard navigation.
+
+### Files added
+- `src/app/dashboard/autopilot/page.tsx`
+- `src/app/dashboard/autopilot/actions.ts`
+- `src/lib/auto-pilot.ts`
+- `drizzle/0003_auto_pilot_settings.sql`
+- `drizzle/meta/0003_snapshot.json`
+
+### Files updated
+- `src/db/schema.ts`
+- `src/app/api/cron/publish-scheduled/route.ts`
+- `src/components/dashboard/dashboard-nav.tsx`
+- `src/app/dashboard/page.tsx`
+- `README.md`
+- `log_project.md`
+- `drizzle/meta/_journal.json`
+
+### Database / Migration
+This step requires a migration because it adds the new `automation_settings` table.
+
+Run after extracting the ZIP:
+
+```powershell
+npm install
+npm run db:migrate
+npm run dev
+```
+
+### How the Auto Pilot flow works
+1. User adds topics to `/dashboard/topics`.
+2. User opens `/dashboard/autopilot` and enables Auto Pilot.
+3. Cron calls `/api/cron/publish-scheduled` every 10 minutes locally/manual or via Vercel/external cron later.
+4. If an Auto Pilot job is due, the app claims it and calculates the next run.
+5. The app selects the next active topic from Topic Queue.
+6. Gemini writes the post using the default writing profile.
+7. If mode is `draft_only`, the generated post stays in the app for review.
+8. If mode is `auto_publish`, the generated post is immediately scheduled and the same cron run publishes it to the connected Facebook Page.
+9. The used topic is marked `used` and linked to the created post.
+
+### How to test locally
+1. Run migration and start dev server.
+2. Open `/dashboard/topics` and ensure at least one topic has status `รอใช้`.
+3. Open `/dashboard/autopilot`.
+4. Choose mode `เขียนไว้ให้ตรวจก่อน` for safe testing first.
+5. Click `รัน Auto Pilot ตอนนี้`.
+6. Confirm a new generated post is created and the topic becomes `ใช้แล้ว`.
+7. Switch mode to `เขียนแล้วโพสต์ลงเพจอัตโนมัติ` only after confirming Facebook Page settings are connected.
+8. Click `รัน Auto Pilot ตอนนี้` again and confirm the generated post is posted to Facebook.
+9. Test scheduled run by enabling Auto Pilot and opening `/api/cron/publish-scheduled` when `next_run_at` is due.
+
+### Current status
+- Auto Pilot settings page is implemented.
+- Manual Auto Pilot test is implemented.
+- Cron endpoint now combines Auto Pilot generation and scheduled publishing.
+- The project is ready for user testing in local development before connecting to production cron.
+
+### Known issues / intentional limitations
+- Topic order is still based on `priority` then creation time. There is no drag-and-drop UI yet.
+- Auto Publish mode can post to Facebook immediately, so it should be tested carefully with the user's own Page first.
+- Auto Pilot uses the first connected Facebook Page for the workspace.
+- Vercel or external cron is still needed for fully automatic operation while the user's computer is off.
+
+### Next steps
+1. Test Step 22.3 locally and commit if it passes.
+2. Add a clearer Auto Pilot history/log page if needed.
+3. Add topic priority/reorder controls.
+4. Later deploy to Vercel and enable Vercel Cron or external cron when ready.
+
+### Validation result after implementation
+Commands run in sandbox:
+
+```powershell
+npm install
+npx drizzle-kit generate --name auto_pilot_settings
+npm run lint
+npx tsc --noEmit
+npm run build
+```
+
+Result:
+- `npx drizzle-kit generate --name auto_pilot_settings` created `drizzle/0003_auto_pilot_settings.sql` and `drizzle/meta/0003_snapshot.json`.
+- `npm run lint` passed.
+- `npx tsc --noEmit` passed.
+- `npm run build` passed completely and generated all pages successfully.

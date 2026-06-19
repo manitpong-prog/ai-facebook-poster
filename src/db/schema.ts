@@ -35,6 +35,13 @@ export const postStatusEnum = pgEnum("post_status", [
   "error",
 ]);
 
+export const contentTopicStatusEnum = pgEnum("content_topic_status", [
+  "active",
+  "paused",
+  "used",
+  "archived",
+]);
+
 export const publishModeEnum = pgEnum("publish_mode", [
   "draft",
   "post_now",
@@ -275,6 +282,75 @@ export const posts = pgTable(
     index("posts_status_idx").on(table.status),
     index("posts_scheduled_at_idx").on(table.scheduledAt),
     uniqueIndex("posts_facebook_post_id_unique").on(table.facebookPostId),
+  ],
+);
+
+
+
+export const contentTopics = pgTable(
+  "content_topics",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    createdPostId: uuid("created_post_id").references(() => posts.id, {
+      onDelete: "set null",
+    }),
+
+    title: text("title").notNull(),
+    notes: text("notes"),
+    status: contentTopicStatusEnum("status").default("active").notNull(),
+    priority: integer("priority").default(100).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdByUserId: text("created_by_user_id"),
+
+    ...timestamps,
+  },
+  (table) => [
+    index("content_topics_workspace_id_idx").on(table.workspaceId),
+    index("content_topics_status_idx").on(table.status),
+    index("content_topics_workspace_status_idx").on(
+      table.workspaceId,
+      table.status,
+    ),
+    index("content_topics_priority_idx").on(table.priority),
+    index("content_topics_created_post_id_idx").on(table.createdPostId),
+  ],
+);
+
+
+export const automationSettings = pgTable(
+  "automation_settings",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+
+    isEnabled: boolean("is_enabled").default(false).notNull(),
+    mode: text("mode").default("draft_only").notNull(),
+    frequencyDays: integer("frequency_days").default(1).notNull(),
+    postTime: varchar("post_time", { length: 5 }).default("09:00").notNull(),
+    timezone: text("timezone").default("Asia/Bangkok").notNull(),
+
+    nextRunAt: timestamp("next_run_at", { withTimezone: true }),
+    lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+    lastPostId: uuid("last_post_id").references(() => posts.id, {
+      onDelete: "set null",
+    }),
+    lastResult: text("last_result"),
+    lastErrorMessage: text("last_error_message"),
+
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("automation_settings_workspace_id_unique").on(table.workspaceId),
+    index("automation_settings_workspace_id_idx").on(table.workspaceId),
+    index("automation_settings_enabled_next_run_idx").on(
+      table.isEnabled,
+      table.nextRunAt,
+    ),
   ],
 );
 

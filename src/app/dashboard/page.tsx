@@ -46,7 +46,7 @@ export default async function DashboardPage() {
       <div>
         <h1 className="text-3xl font-bold">Dashboard</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-          ภาพรวมระบบสร้างโพสต์ Facebook ด้วย AI ตอนนี้สามารถตั้งค่าสไตล์การเขียนและสร้าง Draft โพสต์ใหม่ได้แล้ว
+          ภาพรวมระบบสร้างโพสต์ Facebook ด้วย AI ตอนนี้สามารถเก็บหัวข้อไว้ใน Topic Queue สร้าง Draft ให้ AI เขียน ตั้งเวลา และโพสต์ไป Facebook Page ได้แล้ว
         </p>
       </div>
 
@@ -57,12 +57,24 @@ export default async function DashboardPage() {
             ใส่หัวข้อและคำสั่งเฉพาะโพสต์นี้ แล้วบันทึกเป็น Draft เพื่อเตรียมให้ AI เขียนในขั้นถัดไป
           </p>
 
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Link
-              href="/dashboard/posts/new"
+              href="/dashboard/topics"
               className="rounded-xl bg-blue-500 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-blue-400"
             >
-              + สร้าง Draft ใหม่
+              + เพิ่มหัวข้อ AI
+            </Link>
+            <Link
+              href="/dashboard/autopilot"
+              className="rounded-xl border border-emerald-400/40 px-4 py-3 text-center text-sm font-semibold text-emerald-100 hover:bg-emerald-500/10"
+            >
+              ตั้ง Auto Pilot
+            </Link>
+            <Link
+              href="/dashboard/posts/new"
+              className="rounded-xl border border-blue-400/40 px-4 py-3 text-center text-sm font-semibold text-blue-100 hover:bg-blue-500/10"
+            >
+              สร้าง Draft ใหม่
             </Link>
             <Link
               href="/dashboard/posts"

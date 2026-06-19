@@ -1,36 +1,158 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Facebook Poster
 
-## Getting Started
+AI Facebook Poster is a Next.js dashboard for drafting Thai Facebook posts with Gemini, previewing/editing the copy, publishing to a Facebook Page, and scheduling posts.
 
-First, run the development server:
+## Local development
 
-```bash
+```powershell
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```text
+http://localhost:3000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Environment variables
 
-## Learn More
+The app uses `.env.local` during local development.
 
-To learn more about Next.js, take a look at the following resources:
+Important variables:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```text
+DATABASE_URL=...
+BETTER_AUTH_SECRET=...
+BETTER_AUTH_URL=http://localhost:3000
+GEMINI_API_KEY=...
+AI_PROVIDER=gemini
+GEMINI_MODEL=gemini-3.1-flash-lite
+CRON_SECRET=
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+`CRON_SECRET` can stay empty for local development. In production, set a long random value in Vercel before enabling an automatic scheduler.
 
-## Deploy on Vercel
+## Scheduled publishing
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Manual local test endpoint:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```text
+http://localhost:3000/api/cron/publish-scheduled
+```
+
+In local development, this endpoint works without `CRON_SECRET` so it is easy to test manually.
+
+In production, the endpoint requires one of these:
+
+```text
+Authorization: Bearer <CRON_SECRET>
+```
+
+or:
+
+```text
+/api/cron/publish-scheduled?secret=<CRON_SECRET>
+```
+
+## Vercel Cron
+
+The project includes `vercel.json`:
+
+```json
+{
+  "crons": [
+    {
+      "path": "/api/cron/publish-scheduled",
+      "schedule": "*/10 * * * *"
+    }
+  ]
+}
+```
+
+This asks Vercel to call the scheduled publisher every 10 minutes. If `CRON_SECRET` is set in Vercel, Vercel will send it as an Authorization header automatically.
+
+## External cron option
+
+If the current Vercel plan or project settings are not suitable for frequent cron checks, an external cron service can call:
+
+```text
+https://YOUR_DOMAIN/api/cron/publish-scheduled?secret=YOUR_CRON_SECRET
+```
+
+Use every 10 minutes for normal testing. The publisher already prevents duplicate posting by claiming a scheduled post before it sends it to Facebook.
+
+## Topic Queue
+
+The dashboard includes a Topic Queue page:
+
+```text
+/dashboard/topics
+```
+
+Use this page to paste many future post ideas, one topic per line. Each topic can be kept active, paused, archived, converted into a Draft manually, or sent to Auto Writer.
+
+The Auto Writer button selects the next active topic, asks Gemini to write the post, saves the generated Preview, and marks the topic as used. This is the foundation for fully automated content publishing.
+
+## Database migrations
+
+Run only when schema changes:
+
+```powershell
+npm run db:generate
+npm run db:migrate
+```
+
+Step 22.1 adds a migration for the new `content_topics` table. Step 22.2 does not add a new migration. After extracting this ZIP, run:
+
+```powershell
+npm install
+npm run db:migrate
+npm run dev
+```
+
+## Auto Pilot
+
+The dashboard includes an Auto Pilot page:
+
+```text
+/dashboard/autopilot
+```
+
+Use this page to control automatic content generation from Topic Queue.
+
+Available modes:
+
+```text
+draft_only   = pick the next active topic and let Gemini write it, then keep it for review
+auto_publish = pick the next active topic, let Gemini write it, schedule it immediately, then the cron publisher posts it to Facebook
+```
+
+The scheduler uses Thailand time (`Asia/Bangkok`). Supported frequencies are every 1, 2, 3, or 7 days.
+
+The cron endpoint now performs two jobs in one run:
+
+```text
+1. Run Auto Pilot jobs that are due
+2. Publish scheduled posts that are due
+```
+
+Local manual test:
+
+```text
+http://localhost:3000/api/cron/publish-scheduled
+```
+
+To run only scheduled publishing and skip Auto Pilot:
+
+```text
+http://localhost:3000/api/cron/publish-scheduled?skipAutoPilot=1
+```
+
+Step 22.3 adds a migration for the new `automation_settings` table. After extracting this ZIP, run:
+
+```powershell
+npm install
+npm run db:migrate
+npm run dev
+```
