@@ -289,6 +289,12 @@ export default async function DashboardPage() {
           >
             ตั้ง Auto Pilot
           </Link>
+          <Link
+            href="/dashboard/deploy"
+            className="rounded-xl border border-slate-700 px-4 py-3 text-sm font-semibold text-slate-200 hover:border-slate-500"
+          >
+            เช็กก่อน Deploy
+          </Link>
         </div>
       </div>
 

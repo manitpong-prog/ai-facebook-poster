@@ -39,6 +39,11 @@ const navItems = [
     label: "Facebook Page",
     description: "เชื่อมต่อเพจ",
   },
+  {
+    href: "/dashboard/deploy",
+    label: "Deploy",
+    description: "เช็กก่อนขึ้น Vercel",
+  },
 ];
 
 function isNavItemActive(pathname: string, href: string) {

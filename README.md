@@ -252,3 +252,42 @@ npm run db:migrate
 - โพสต์ตั้งเวลาถัดไป และโพสต์ล่าสุดที่เผยแพร่แล้ว
 
 รอบนี้ไม่ต้องรัน migration เพิ่ม
+
+## Deployment readiness
+
+Step 23.1 adds a deployment readiness page:
+
+```text
+/dashboard/deploy
+```
+
+Use this page before deploying to Vercel. It checks:
+
+```text
+- DATABASE_URL
+- BETTER_AUTH_SECRET
+- BETTER_AUTH_URL
+- GEMINI_API_KEY
+- AI_PROVIDER
+- GEMINI_MODEL
+- CRON_SECRET
+- Facebook Page connection
+- Topic Queue readiness
+- Auto Pilot status
+- Cron endpoint path
+- Latest Auto Pilot run log
+```
+
+The page does not reveal secret values. It only shows whether each variable is configured and gives safe masked status information.
+
+Recommended deployment flow:
+
+```text
+1. Commit and push the latest code
+2. Set Vercel Environment Variables
+3. Run database migrations against Neon if needed
+4. Deploy to Vercel
+5. Open /dashboard/deploy on production
+6. Test Facebook Page and Auto Pilot
+7. Enable Auto Pilot auto_publish only after all checks pass
+```

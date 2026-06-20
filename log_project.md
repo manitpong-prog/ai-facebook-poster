@@ -1714,3 +1714,57 @@ ALTER TABLE "automation_settings" ADD COLUMN "topic_selection_mode" text DEFAULT
 
 ### สถานะปัจจุบัน
 Dashboard เป็นหน้าสรุปภาพรวมของระบบ Auto Pilot แล้ว เหมาะสำหรับใช้เป็นหน้าแรกหลัง login เพื่อตรวจว่าระบบพร้อมทำงานหรือมีจุดไหนต้องเช็กก่อน
+
+---
+
+## Step 23.1 - Deployment Readiness / ตรวจความพร้อมก่อนขึ้น Vercel
+
+### เป้าหมาย
+เพิ่มหน้าตรวจความพร้อมก่อน deploy production เพื่อให้ผู้ใช้รู้ว่าระบบพร้อมขึ้น Vercel หรือยัง โดยยังไม่ต้อง deploy จริงทันที
+
+### สิ่งที่ทำแล้ว
+- เพิ่มหน้า `/dashboard/deploy`
+- เพิ่มเมนู `Deploy` ใน sidebar/dashboard navigation
+- เพิ่มปุ่มลัด `เช็กก่อน Deploy` ในหน้า `/dashboard`
+- หน้า Deploy ตรวจสถานะสำคัญ:
+  - Environment variables: `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `GEMINI_API_KEY`, `AI_PROVIDER`, `GEMINI_MODEL`, `CRON_SECRET`
+  - สถานะ runtime ว่ารัน local หรือ Vercel
+  - Production base URL
+  - Cron path `/api/cron/publish-scheduled`
+  - External cron URL template
+  - Database / Workspace readiness
+  - Gemini API readiness
+  - Facebook Page readiness
+  - Topic Queue readiness
+  - Auto Pilot settings
+  - Auto Pilot run log ล่าสุด
+  - จำนวนโพสต์ posted / scheduled / error
+- ซ่อนค่า secret จริง ไม่แสดง token หรือ key แบบเต็มใน UI
+- เพิ่มคำแนะนำลำดับ deploy ในหน้า `/dashboard/deploy`
+
+### ไฟล์ที่เพิ่ม
+- `src/app/dashboard/deploy/page.tsx`
+
+### ไฟล์ที่แก้
+- `src/components/dashboard/dashboard-nav.tsx`
+- `src/app/dashboard/page.tsx`
+- `README.md`
+- `log_project.md`
+
+### Database / Migration
+ไม่ต้องรัน migration
+
+### วิธีทดสอบ
+1. รัน `npm run dev`
+2. เข้า `/dashboard/deploy`
+3. ตรวจว่า Environment Variables, Facebook Page, Topic Queue, Auto Pilot และ Cron แสดงสถานะถูกต้อง
+4. ลองกลับไป `/dashboard` แล้วกดปุ่ม `เช็กก่อน Deploy`
+5. เช็กว่าเมนู `Deploy` ใน sidebar ใช้งานได้
+
+### สถานะปัจจุบัน
+ระบบมีหน้าตรวจความพร้อมก่อนขึ้น Vercel แล้ว เหมาะสำหรับใช้เป็น checklist ก่อนเริ่ม Step 23.2 Deploy to Vercel จริง
+
+### ขั้นตอนถัดไปที่แนะนำ
+- ทดสอบ `/dashboard/deploy`
+- ถ้าผ่าน ให้ commit: `Add deployment readiness page`
+- ขั้นต่อไปคือ Step 23.2: Deploy to Vercel + ตั้ง Environment Variables + ทดสอบ production cron
