@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
 
@@ -24,6 +27,18 @@ async function getExecutablePath() {
 
   if (envExecutablePath) {
     return envExecutablePath;
+  }
+
+  const bundledChromiumBinPath = path.join(
+    process.cwd(),
+    "node_modules",
+    "@sparticuz",
+    "chromium",
+    "bin",
+  );
+
+  if (fs.existsSync(bundledChromiumBinPath)) {
+    return chromium.executablePath(bundledChromiumBinPath);
   }
 
   return chromium.executablePath();
