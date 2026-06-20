@@ -3,10 +3,13 @@ import { redirect } from "next/navigation";
 import { desc, eq } from "drizzle-orm";
 
 import { DashboardLoadError } from "@/components/dashboard/dashboard-load-error";
+import { SubmitButton } from "@/components/forms/submit-button";
 import { db } from "@/db";
 import { posts } from "@/db/schema";
 import { getDashboardContext } from "@/lib/dashboard-context";
 import { getSessionErrorMessage } from "@/lib/session";
+
+import { deletePostFromListAction } from "./actions";
 
 type PostsPageProps = {
   searchParams?: Promise<{
@@ -27,6 +30,10 @@ const statusLabels: Record<string, string> = {
 
 const errorLabels: Record<string, string> = {
   post_not_found: "ไม่พบโพสต์ หรือโพสต์นี้ไม่ได้อยู่ใน Workspace ของคุณ",
+  session_failed: "อ่าน session ไม่สำเร็จ กรุณาลองโหลดหน้าใหม่แล้วกดอีกครั้ง",
+  delete_failed: "ลบโพสต์ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
+  posting_delete_blocked:
+    "โพสต์นี้กำลังถูกส่งไป Facebook อยู่ กรุณารอสักครู่แล้วโหลดหน้าใหม่ก่อนลบ",
 };
 
 function formatDate(value: Date | null) {
@@ -115,7 +122,7 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
 
       {wasDeleted ? (
         <div className="mt-6 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
-          ลบ Draft เรียบร้อยแล้ว
+          ลบรายการโพสต์จากระบบเรียบร้อยแล้ว
         </div>
       ) : null}
 
@@ -142,16 +149,18 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
         ) : (
           <div className="divide-y divide-slate-800">
             {workspacePosts.map((post) => (
-              <Link
+              <div
                 key={post.id}
-                href={`/dashboard/posts/${post.id}`}
                 className="block p-5 transition hover:bg-slate-800/50"
               >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <div className="font-semibold text-slate-100">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      href={`/dashboard/posts/${post.id}`}
+                      className="font-semibold text-slate-100 underline-offset-4 hover:text-blue-200 hover:underline"
+                    >
                       {post.topic}
-                    </div>
+                    </Link>
                     <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-400">
                       <span className="rounded-full border border-slate-700 px-3 py-1">
                         {statusLabels[post.status] ?? post.status}
@@ -170,20 +179,46 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
                         </span>
                       ) : null}
                     </div>
+                    {post.status === "posted" ? (
+                      <p className="mt-3 text-xs leading-5 text-slate-500">
+                        ลบจากระบบจะไม่ลบโพสต์ที่เผยแพร่บน Facebook แล้ว
+                      </p>
+                    ) : null}
                   </div>
 
-                  <div className="text-left text-xs text-slate-500 sm:text-right">
-                    <div>สร้าง: {formatDate(post.createdAt)}</div>
-                    <div>อัปเดต: {formatDate(post.updatedAt)}</div>
-                    {post.scheduledAt ? (
-                      <div>ตั้งเวลา: {formatDate(post.scheduledAt)}</div>
-                    ) : null}
-                    {post.postedAt ? (
-                      <div>โพสต์: {formatDate(post.postedAt)}</div>
-                    ) : null}
+                  <div className="flex flex-col gap-3 text-left text-xs text-slate-500 sm:items-end sm:text-right">
+                    <div>
+                      <div>สร้าง: {formatDate(post.createdAt)}</div>
+                      <div>อัปเดต: {formatDate(post.updatedAt)}</div>
+                      {post.scheduledAt ? (
+                        <div>ตั้งเวลา: {formatDate(post.scheduledAt)}</div>
+                      ) : null}
+                      {post.postedAt ? (
+                        <div>โพสต์: {formatDate(post.postedAt)}</div>
+                      ) : null}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 sm:justify-end">
+                      <Link
+                        href={`/dashboard/posts/${post.id}`}
+                        className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-slate-500 hover:bg-slate-800"
+                      >
+                        เปิดดู
+                      </Link>
+                      <form action={deletePostFromListAction}>
+                        <input type="hidden" name="postId" value={post.id} />
+                        <SubmitButton
+                          disabled={post.status === "posting"}
+                          pendingText="กำลังลบ..."
+                          className="rounded-xl border border-red-500/50 px-4 py-2 text-sm font-semibold text-red-100 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          ลบ
+                        </SubmitButton>
+                      </form>
+                    </div>
                   </div>
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
         )}

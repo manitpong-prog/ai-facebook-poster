@@ -156,3 +156,21 @@ npm install
 npm run db:migrate
 npm run dev
 ```
+
+## Delete buttons on list pages
+
+The Posts and Topic Queue overview pages include direct delete buttons:
+
+```text
+/dashboard/posts
+/dashboard/topics
+```
+
+Behavior:
+
+```text
+Posts: delete removes the local app post record. If the post was already published to Facebook, the Facebook post remains on the Page.
+Topics: delete removes the topic queue item only. It does not delete a post that was already generated from that topic.
+```
+
+Posts currently in `posting` status are protected from deletion to avoid deleting a record while a publish attempt is running.

@@ -19,13 +19,6 @@ import {
 import { getSessionResult } from "@/lib/session";
 import { ensureDefaultWorkspace } from "@/lib/workspace";
 
-const DELETABLE_STATUSES = new Set([
-  "draft",
-  "generated",
-  "error",
-  "cancelled",
-]);
-
 function getPostId(formData: FormData) {
   const value = formData.get("postId");
 
@@ -309,7 +302,7 @@ export async function deleteDraftPostAction(formData: FormData) {
     redirect("/dashboard/posts?error=post_not_found");
   }
 
-  if (!DELETABLE_STATUSES.has(ownedPost.post.status)) {
+  if (ownedPost.post.status === "posting") {
     redirect(buildRedirectPath(postId, { deleteError: "not_allowed" }));
   }
 
@@ -323,7 +316,7 @@ export async function deleteDraftPostAction(formData: FormData) {
         ),
       );
   } catch (error) {
-    console.error("Failed to delete draft post:", error);
+    console.error("Failed to delete post:", error);
     redirect(buildRedirectPath(postId, { deleteError: "delete_failed" }));
   }
 

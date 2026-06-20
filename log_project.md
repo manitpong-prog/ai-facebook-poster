@@ -1378,3 +1378,70 @@ Result:
 - `npm run lint` passed.
 - `npx tsc --noEmit` passed.
 - `npm run build` passed completely and generated all pages successfully.
+
+---
+
+## 2026-06-20 - Step 22.3.1: Delete buttons on list pages
+
+### Goal
+Add delete buttons directly on overview/list pages so the user can remove created items without opening each detail page first.
+
+### Completed
+- Added a list-level delete action for posts on `/dashboard/posts`.
+- Refactored the posts list so each row has a separate `เปิดดู` button and `ลบ` button.
+- Allows deleting post records from the app for draft/generated/scheduled/posted/error/cancelled states, except the transient `posting` state to avoid race conditions while Facebook publishing is running.
+- Clarified that deleting a posted record from the app does not delete the already-published Facebook post.
+- Updated the existing post detail delete section to match the new behavior and wording.
+- Added a delete action for Topic Queue items on `/dashboard/topics`.
+- Added `ลบ` buttons for every topic row, including active, paused, used, and archived topics.
+- Deleting a topic does not delete any post that was already generated from that topic.
+
+### Files added
+- `src/app/dashboard/posts/actions.ts`
+
+### Files updated
+- `src/app/dashboard/posts/page.tsx`
+- `src/app/dashboard/posts/[postId]/actions.ts`
+- `src/app/dashboard/posts/[postId]/page.tsx`
+- `src/app/dashboard/topics/actions.ts`
+- `src/app/dashboard/topics/page.tsx`
+- `README.md`
+- `log_project.md`
+
+### Database / Migration
+No database migration is required in this step.
+
+### How to test locally
+1. Start the app with `npm run dev`.
+2. Open `/dashboard/posts`.
+3. Click `ลบ` on a post row and confirm that the row disappears and the success message appears.
+4. For a posted item, confirm that only the app record is deleted; the Facebook post remains on the Facebook Page.
+5. Open `/dashboard/topics`.
+6. Click `ลบ` on active, paused, used, or archived topic rows and confirm that the item disappears.
+
+### Current status
+- Delete buttons are now available from the Posts overview and Topic Queue overview.
+- This improves cleanup while testing Auto Writer and Auto Pilot flows.
+
+### Known issues / intentional limitations
+- Delete does not remove already-published content from Facebook. It only removes the local app record.
+- Posts in the `posting` state cannot be deleted until the publish attempt finishes.
+- Topic deletion does not cascade-delete posts generated from that topic.
+
+### Next steps
+1. User tests delete buttons locally.
+2. If needed, add a richer delete confirmation modal later.
+3. Continue with Auto Pilot diagnostics/history so failed auto-publish attempts show exactly which stage failed.
+
+### Validation result after implementation
+Commands run in sandbox:
+
+```powershell
+npm install --ignore-scripts --prefer-offline --no-audit --no-fund
+npm run lint
+npx tsc --noEmit
+```
+
+Result:
+- `npm run lint` passed.
+- `npx tsc --noEmit` passed.

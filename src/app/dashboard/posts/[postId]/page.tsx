@@ -65,8 +65,9 @@ const updateErrorLabels: Record<string, string> = {
 
 const deleteErrorLabels: Record<string, string> = {
   session_failed: "อ่าน session ไม่สำเร็จ กรุณาลองโหลดหน้าใหม่แล้วกดอีกครั้ง",
-  not_allowed: "โพสต์สถานะนี้ยังลบไม่ได้",
-  delete_failed: "ลบ Draft ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
+  not_allowed:
+    "โพสต์นี้กำลังถูกส่งไป Facebook อยู่ กรุณารอสักครู่แล้วโหลดหน้าใหม่ก่อนลบ",
+  delete_failed: "ลบโพสต์ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
 };
 
 const publishErrorLabels: Record<string, string> = {
@@ -82,8 +83,6 @@ const publishErrorLabels: Record<string, string> = {
   facebook_failed:
     "โพสต์ไป Facebook ไม่สำเร็จ กรุณาเช็ก Page Access Token, permission หรือสถานะ Meta App แล้วลองใหม่",
 };
-
-const deletableStatuses = new Set(["draft", "generated", "error", "cancelled"]);
 
 const scheduleErrorLabels: Record<string, string> = {
   session_failed: "อ่าน session ไม่สำเร็จ กรุณาลองโหลดหน้าใหม่แล้วกดอีกครั้ง",
@@ -233,7 +232,7 @@ export default async function PostDetailPage({
   }
 
   const approxWordCount = countApproxWords(post.generatedText);
-  const canDeletePost = deletableStatuses.has(post.status);
+  const canDeletePost = post.status !== "posting";
   const hasConnectedFacebookPage = Boolean(
     facebookPage?.pageId && facebookPage.accessTokenEncrypted,
   );
@@ -704,10 +703,13 @@ export default async function PostDetailPage({
           </div>
 
           <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-6">
-            <h2 className="text-xl font-semibold text-red-100">ลบ Draft</h2>
+            <h2 className="text-xl font-semibold text-red-100">
+              ลบโพสต์จากระบบ
+            </h2>
             <p className="mt-2 text-sm leading-6 text-red-100/75">
-              ใช้ลบรายการที่บันทึกซ้ำหรือไม่ต้องการแล้ว
-              ระบบจะลบเฉพาะโพสต์ที่ยังไม่โพสต์จริงเท่านั้น
+              ใช้ลบรายการที่บันทึกซ้ำหรือไม่ต้องการแล้ว ถ้าโพสต์เคยเผยแพร่บน
+              Facebook แล้ว การลบตรงนี้จะลบเฉพาะข้อมูลในระบบ ไม่ลบโพสต์บน
+              Facebook
             </p>
             <form action={deleteDraftPostAction} className="mt-4">
               <input type="hidden" name="postId" value={post.id} />
@@ -716,12 +718,12 @@ export default async function PostDetailPage({
                 pendingText="กำลังลบ..."
                 className="rounded-xl border border-red-400/60 px-4 py-2 text-sm font-semibold text-red-100 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                ลบ Draft นี้
+                ลบโพสต์นี้
               </SubmitButton>
             </form>
             {!canDeletePost ? (
               <p className="mt-3 text-xs text-red-100/60">
-                โพสต์สถานะนี้ยังลบไม่ได้ เพราะอาจถูกตั้งเวลา/โพสต์จริงแล้ว
+                โพสต์นี้กำลังถูกส่งไป Facebook อยู่ จึงยังลบไม่ได้
               </p>
             ) : null}
           </div>

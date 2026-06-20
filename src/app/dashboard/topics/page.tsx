@@ -13,6 +13,7 @@ import {
   autoWriteNextTopicAction,
   createDraftFromTopicAction,
   createTopicsAction,
+  deleteTopicAction,
   updateTopicStatusAction,
 } from "./actions";
 
@@ -20,6 +21,7 @@ type TopicsPageProps = {
   searchParams?: Promise<{
     created?: string;
     updated?: string;
+    deleted?: string;
     error?: string;
   }>;
 };
@@ -34,7 +36,8 @@ const statusLabels: Record<TopicStatus, string> = {
 };
 
 const errorLabels: Record<string, string> = {
-  topic_required: "กรุณาใส่หัวข้ออย่างน้อย 1 หัวข้อ และแต่ละหัวข้อต้องยาวอย่างน้อย 3 ตัวอักษร",
+  topic_required:
+    "กรุณาใส่หัวข้ออย่างน้อย 1 หัวข้อ และแต่ละหัวข้อต้องยาวอย่างน้อย 3 ตัวอักษร",
   create_failed: "บันทึกหัวข้อไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
   session_failed: "อ่าน session ไม่สำเร็จ กรุณาลองโหลดหน้าใหม่แล้วทำอีกครั้ง",
   workspace_missing: "ไม่พบ Workspace สำหรับบันทึกหัวข้อ",
@@ -43,9 +46,12 @@ const errorLabels: Record<string, string> = {
   topic_already_used: "หัวข้อนี้ถูกใช้สร้าง Draft แล้ว จึงแก้สถานะไม่ได้",
   topic_archived: "หัวข้อนี้ถูกเก็บถาวรแล้ว กรุณาเปิดใช้งานก่อนสร้าง Draft",
   status_failed: "อัปเดตสถานะหัวข้อไม่สำเร็จ",
+  delete_failed: "ลบหัวข้อไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
   draft_failed: "สร้าง Draft จากหัวข้อไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
-  no_active_topic: "ยังไม่มีหัวข้อสถานะรอใช้สำหรับให้ AI เขียน กรุณาเพิ่มหัวข้อใหม่หรือเปิดใช้งานหัวข้อที่พักไว้ก่อน",
-  auto_write_failed: "AI เขียนโพสต์จากหัวข้อถัดไปไม่สำเร็จ กรุณาเช็ก GEMINI_API_KEY, quota หรือโมเดล แล้วลองใหม่",
+  no_active_topic:
+    "ยังไม่มีหัวข้อสถานะรอใช้สำหรับให้ AI เขียน กรุณาเพิ่มหัวข้อใหม่หรือเปิดใช้งานหัวข้อที่พักไว้ก่อน",
+  auto_write_failed:
+    "AI เขียนโพสต์จากหัวข้อถัดไปไม่สำเร็จ กรุณาเช็ก GEMINI_API_KEY, quota หรือโมเดล แล้วลองใหม่",
 };
 
 function formatDate(value: Date | null) {
@@ -148,8 +154,9 @@ export default async function TopicsPage({ searchParams }: TopicsPageProps) {
           <p className="text-sm font-medium text-blue-200">Topic Queue</p>
           <h1 className="mt-2 text-3xl font-bold">คลังหัวข้อสำหรับ AI</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-            ใส่หัวข้อไว้หลาย ๆ หัวข้อ แล้วให้ AI เลือกหัวข้อถัดไปมาเขียนเป็นโพสต์ให้ทันที
-            ขั้นนี้เป็นฐานของระบบ Auto Content Queue ก่อนต่อเข้ากับ Cron
+            ใส่หัวข้อไว้หลาย ๆ หัวข้อ แล้วให้ AI
+            เลือกหัวข้อถัดไปมาเขียนเป็นโพสต์ให้ทันที ขั้นนี้เป็นฐานของระบบ Auto
+            Content Queue ก่อนต่อเข้ากับ Cron
           </p>
         </div>
 
@@ -173,6 +180,12 @@ export default async function TopicsPage({ searchParams }: TopicsPageProps) {
         </div>
       ) : null}
 
+      {query?.deleted === "1" ? (
+        <div className="mt-6 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+          ลบหัวข้อออกจากคลังเรียบร้อยแล้ว
+        </div>
+      ) : null}
+
       {errorMessage ? (
         <div className="mt-6 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
           {errorMessage}
@@ -186,7 +199,8 @@ export default async function TopicsPage({ searchParams }: TopicsPageProps) {
         >
           <h2 className="text-xl font-semibold">เพิ่มหัวข้อหลายรายการ</h2>
           <p className="mt-2 text-sm leading-6 text-slate-400">
-            ใส่ 1 หัวข้อต่อ 1 บรรทัด ระบบจะบันทึกเป็นคิวรอให้ AI นำไปเขียนในอนาคต
+            ใส่ 1 หัวข้อต่อ 1 บรรทัด ระบบจะบันทึกเป็นคิวรอให้ AI
+            นำไปเขียนในอนาคต
           </p>
 
           <div className="mt-6 space-y-5">
@@ -261,7 +275,9 @@ export default async function TopicsPage({ searchParams }: TopicsPageProps) {
           </div>
 
           <div className="mt-6 rounded-xl border border-blue-500/30 bg-blue-500/10 p-4 text-sm leading-6 text-blue-100/80">
-            <div className="font-semibold text-blue-100">Auto Writer จากหัวข้อถัดไป</div>
+            <div className="font-semibold text-blue-100">
+              Auto Writer จากหัวข้อถัดไป
+            </div>
             <p className="mt-2">
               กดปุ่มนี้เพื่อให้ระบบเลือกหัวข้อสถานะ “รอใช้” ตามลำดับคิว แล้วให้
               Gemini เขียน Preview ให้ทันที ก่อนต่อยอดไปเป็น Auto Posting
@@ -277,7 +293,8 @@ export default async function TopicsPage({ searchParams }: TopicsPageProps) {
             </form>
             {counts.active === 0 ? (
               <p className="mt-3 text-xs text-blue-100/70">
-                ยังไม่มีหัวข้อรอใช้งาน กรุณาเพิ่มหัวข้อใหม่หรือเปิดใช้งานหัวข้อที่พักไว้
+                ยังไม่มีหัวข้อรอใช้งาน
+                กรุณาเพิ่มหัวข้อใหม่หรือเปิดใช้งานหัวข้อที่พักไว้
               </p>
             ) : null}
           </div>
@@ -288,7 +305,8 @@ export default async function TopicsPage({ searchParams }: TopicsPageProps) {
         <div className="border-b border-slate-800 p-6">
           <h2 className="text-xl font-semibold">รายการหัวข้อ</h2>
           <p className="mt-2 text-sm text-slate-400">
-            ตอนนี้สามารถสร้าง Draft ด้วยมือ หรือให้ AI เลือกหัวข้อถัดไปจากคิวไปเขียนให้อัตโนมัติได้แล้ว
+            ตอนนี้สามารถสร้าง Draft ด้วยมือ หรือให้ AI
+            เลือกหัวข้อถัดไปจากคิวไปเขียนให้อัตโนมัติได้แล้ว
           </p>
         </div>
 
@@ -361,7 +379,8 @@ export default async function TopicsPage({ searchParams }: TopicsPageProps) {
                       </form>
                     ) : null}
 
-                    {topic.status === "paused" || topic.status === "archived" ? (
+                    {topic.status === "paused" ||
+                    topic.status === "archived" ? (
                       <form action={updateTopicStatusAction}>
                         <input type="hidden" name="topicId" value={topic.id} />
                         <input type="hidden" name="status" value="active" />
@@ -386,6 +405,16 @@ export default async function TopicsPage({ searchParams }: TopicsPageProps) {
                         </SubmitButton>
                       </form>
                     ) : null}
+
+                    <form action={deleteTopicAction}>
+                      <input type="hidden" name="topicId" value={topic.id} />
+                      <SubmitButton
+                        pendingText="กำลังลบ..."
+                        className="rounded-xl border border-red-500/50 px-4 py-2 text-sm font-semibold text-red-100 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        ลบ
+                      </SubmitButton>
+                    </form>
                   </div>
                 </div>
               </div>

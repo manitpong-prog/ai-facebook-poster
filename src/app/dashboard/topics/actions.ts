@@ -15,11 +15,7 @@ import {
 
 type TopicStatus = "active" | "paused" | "used" | "archived";
 
-const editableStatuses = new Set<TopicStatus>([
-  "active",
-  "paused",
-  "archived",
-]);
+const editableStatuses = new Set<TopicStatus>(["active", "paused", "archived"]);
 
 function getTextValue(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -32,7 +28,10 @@ function getTextValue(formData: FormData, key: string) {
 }
 
 function normalizeTopicTitle(value: string) {
-  return value.replace(/^[-*•\d.)\s]+/, "").replace(/\s+/g, " ").trim();
+  return value
+    .replace(/^[-*•\d.)\s]+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function buildTopicsRedirect(params: Record<string, string>) {
@@ -86,7 +85,10 @@ async function getOwnedTopic(topicId: string) {
     .where(
       and(
         eq(contentTopics.id, topicId),
-        eq(contentTopics.workspaceId, workspaceResult.currentMembership.workspaceId),
+        eq(
+          contentTopics.workspaceId,
+          workspaceResult.currentMembership.workspaceId,
+        ),
       ),
     )
     .limit(1);
@@ -149,6 +151,49 @@ export async function createTopicsAction(formData: FormData) {
   redirect(buildTopicsRedirect({ created: String(titles.length) }));
 }
 
+export async function deleteTopicAction(formData: FormData) {
+  const topicId = getTextValue(formData, "topicId");
+
+  if (!topicId) {
+    redirect(buildTopicsRedirect({ error: "topic_not_found" }));
+  }
+
+  const ownedTopic = await getOwnedTopic(topicId);
+
+  if (ownedTopic.sessionError) {
+    redirect(buildTopicsRedirect({ error: "session_failed" }));
+  }
+
+  if (!ownedTopic.session) {
+    redirect("/login");
+  }
+
+  if (!ownedTopic.currentMembership || !ownedTopic.topic) {
+    redirect(buildTopicsRedirect({ error: "topic_not_found" }));
+  }
+
+  try {
+    await db
+      .delete(contentTopics)
+      .where(
+        and(
+          eq(contentTopics.id, ownedTopic.topic.id),
+          eq(
+            contentTopics.workspaceId,
+            ownedTopic.currentMembership.workspaceId,
+          ),
+        ),
+      );
+  } catch (error) {
+    console.error("Failed to delete topic:", error);
+    redirect(buildTopicsRedirect({ error: "delete_failed" }));
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/topics");
+  redirect(buildTopicsRedirect({ deleted: "1" }));
+}
+
 export async function updateTopicStatusAction(formData: FormData) {
   const topicId = getTextValue(formData, "topicId");
   const nextStatus = getTextValue(formData, "status") as TopicStatus;
@@ -185,7 +230,10 @@ export async function updateTopicStatusAction(formData: FormData) {
       .where(
         and(
           eq(contentTopics.id, ownedTopic.topic.id),
-          eq(contentTopics.workspaceId, ownedTopic.currentMembership.workspaceId),
+          eq(
+            contentTopics.workspaceId,
+            ownedTopic.currentMembership.workspaceId,
+          ),
         ),
       );
   } catch (error) {
@@ -196,7 +244,6 @@ export async function updateTopicStatusAction(formData: FormData) {
   revalidatePath("/dashboard/topics");
   redirect(buildTopicsRedirect({ updated: "1" }));
 }
-
 
 function getActionErrorMessage(error: unknown) {
   if (error instanceof Error) {
@@ -328,7 +375,10 @@ export async function createDraftFromTopicAction(formData: FormData) {
       .where(
         and(
           eq(contentTopics.id, ownedTopic.topic.id),
-          eq(contentTopics.workspaceId, ownedTopic.currentMembership.workspaceId),
+          eq(
+            contentTopics.workspaceId,
+            ownedTopic.currentMembership.workspaceId,
+          ),
         ),
       );
   } catch (error) {
