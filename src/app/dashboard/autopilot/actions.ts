@@ -8,6 +8,10 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { automationSettings } from "@/db/schema";
 import {
+  recordAutoPilotRunLog,
+  recordAutoPilotUnknownFailureLog,
+} from "@/lib/auto-pilot-run-logs";
+import {
   BANGKOK_TIMEZONE,
   getNextAutoPilotRunAt,
   normalizeAutoPilotSettingsInput,
@@ -22,6 +26,17 @@ function buildAutoPilotRedirect(params: Record<string, string>) {
   return `/dashboard/autopilot?${searchParams.toString()}`;
 }
 
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return "Unknown error";
+  }
+}
 
 function buildPublishFailureDetails(
   publishResult: Awaited<ReturnType<typeof publishDueScheduledPosts>>,
@@ -201,6 +216,7 @@ export async function runAutoPilotNowAction() {
   }
 
   const now = new Date();
+  const startedAt = now;
   let redirectParams: Record<string, string>;
 
   try {
@@ -210,6 +226,14 @@ export async function runAutoPilotNowAction() {
     });
 
     const publishResult = await publishDueScheduledPosts({ limit: 5, now });
+
+    await recordAutoPilotRunLog({
+      trigger: "manual",
+      autoPilotResult,
+      publishResult,
+      startedAt,
+      finishedAt: new Date(),
+    });
 
     if (
       autoPilotResult.status === "generated" &&
@@ -267,6 +291,17 @@ export async function runAutoPilotNowAction() {
     }
   } catch (error) {
     console.error("Failed to run Auto Pilot now:", error);
+
+    if (workspaceResult.currentMembership) {
+      await recordAutoPilotUnknownFailureLog({
+        workspaceId: workspaceResult.currentMembership.workspaceId,
+        trigger: "manual",
+        errorMessage: getErrorMessage(error),
+        startedAt,
+        finishedAt: new Date(),
+      });
+    }
+
     redirectParams = { error: "run_failed" };
   }
 

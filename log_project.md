@@ -1562,3 +1562,49 @@ No database migration is required.
 
 ### Current status
 Auto Pilot success redirects should now be treated as successful UI navigation rather than caught as server-action errors.
+
+## Step 22.4 - Auto Pilot Run Logs / ประวัติการทำงาน
+
+### เป้าหมาย
+เพิ่มประวัติการรันของ Auto Pilot เพื่อดูย้อนหลังว่าแต่ละรอบทำอะไรไปบ้าง เช่น รันเองหรือ Cron, ใช้หัวข้ออะไร, สร้างโพสต์ไหน, โพสต์ลง Facebook สำเร็จหรือไม่, และ error จริงคืออะไร
+
+### สิ่งที่ทำแล้ว
+- เพิ่มตาราง `auto_pilot_run_logs` สำหรับเก็บประวัติ Auto Pilot
+- เพิ่ม helper `src/lib/auto-pilot-run-logs.ts` สำหรับบันทึก log จากทั้ง manual run และ cron run
+- หน้า `/dashboard/autopilot` แสดงกล่อง “ประวัติ Auto Pilot” ล่าสุด 10 รายการ
+- บันทึก log เมื่อกด “รัน Auto Pilot ตอนนี้”
+- บันทึก log เมื่อ `/api/cron/publish-scheduled` เรียก Auto Pilot ผ่าน cron
+- log เก็บข้อมูลสำคัญ เช่น trigger, mode, status, topic, postId, publish summary และ error message
+
+### ไฟล์ที่เพิ่ม
+- `src/lib/auto-pilot-run-logs.ts`
+- `drizzle/0004_auto_pilot_run_logs.sql`
+- `drizzle/meta/0004_snapshot.json`
+
+### ไฟล์ที่แก้
+- `src/db/schema.ts`
+- `src/app/dashboard/autopilot/actions.ts`
+- `src/app/dashboard/autopilot/page.tsx`
+- `src/app/api/cron/publish-scheduled/route.ts`
+- `README.md`
+- `log_project.md`
+- `drizzle/meta/_journal.json`
+
+### Database / Migration
+ต้องรัน migration เพราะเพิ่มตารางใหม่:
+
+```powershell
+npm run db:migrate
+```
+
+### คำสั่งตรวจสอบ
+- `npm run lint -- --no-cache` ผ่าน
+- `npx tsc --noEmit` ผ่าน
+
+### สถานะปัจจุบัน
+ระบบ Auto Pilot สามารถดูประวัติย้อนหลังได้แล้ว ช่วยให้ debug ได้ง่ายขึ้นว่าติดที่ Topic Queue, Gemini, Facebook Page หรือ Cron
+
+### ขั้นตอนถัดไปที่แนะนำ
+- ทดสอบ run history ด้วย manual Auto Pilot และ cron endpoint
+- ถ้าผ่าน ให้ commit: `Add Auto Pilot run logs`
+- ขั้นต่อไปอาจเพิ่ม “ล้างประวัติ Auto Pilot” หรือ “ดูประวัติแบบละเอียดรายรายการ” ได้ภายหลัง

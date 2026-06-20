@@ -204,3 +204,21 @@ When auto-publish fails, read these areas in order:
 ```
 
 No migration is required for Step 22.3.2.
+
+
+## Step 22.4 - Auto Pilot Run Logs
+
+Auto Pilot มีประวัติการรันย้อนหลังในหน้า `/dashboard/autopilot` แล้ว
+
+สิ่งที่เพิ่ม:
+
+- ตาราง `auto_pilot_run_logs` สำหรับเก็บประวัติการรัน
+- บันทึก log จากทั้งการกดรันเองและ cron endpoint
+- แสดงผลล่าสุด 10 รายการในหน้า Auto Pilot
+- ดูได้ว่าแต่ละรอบใช้หัวข้ออะไร สร้างโพสต์ไหน โพสต์สำเร็จหรือไม่ และ error คืออะไร
+
+หลังแตก ZIP รอบนี้ต้องรัน migration:
+
+```powershell
+npm run db:migrate
+```

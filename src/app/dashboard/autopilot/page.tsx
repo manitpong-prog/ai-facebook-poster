@@ -1,11 +1,16 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 import { DashboardLoadError } from "@/components/dashboard/dashboard-load-error";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { db } from "@/db";
-import { contentTopics, facebookPages, posts } from "@/db/schema";
+import {
+  autoPilotRunLogs,
+  contentTopics,
+  facebookPages,
+  posts,
+} from "@/db/schema";
 import { ensureAutomationSettings } from "@/lib/auto-pilot";
 import { getDashboardContext } from "@/lib/dashboard-context";
 import { getSessionErrorMessage } from "@/lib/session";
@@ -56,6 +61,38 @@ const postStatusLabels: Record<string, string> = {
   cancelled: "Cancelled",
   error: "Error",
 };
+
+const runLogStatusLabels: Record<string, string> = {
+  generated: "AI เขียนแล้ว",
+  published: "โพสต์สำเร็จ",
+  publish_failed: "โพสต์ Facebook ไม่สำเร็จ",
+  publish_pending: "รอโพสต์",
+  publish_skipped: "ข้ามการโพสต์",
+  no_active_topic: "ไม่มีหัวข้อรอใช้",
+  failed: "ล้มเหลว",
+  skipped: "ถูกข้าม",
+};
+
+const runTriggerLabels: Record<string, string> = {
+  manual: "กดรันเอง",
+  cron: "Cron อัตโนมัติ",
+};
+
+function runLogStatusClass(status: string) {
+  if (status === "published" || status === "generated") {
+    return "border-emerald-500/30 bg-emerald-500/10 text-emerald-100";
+  }
+
+  if (
+    status === "publish_pending" ||
+    status === "skipped" ||
+    status === "no_active_topic"
+  ) {
+    return "border-amber-500/30 bg-amber-500/10 text-amber-100";
+  }
+
+  return "border-red-500/30 bg-red-500/10 text-red-100";
+}
 
 function formatDate(value: Date | null) {
   if (!value) {
@@ -128,7 +165,9 @@ function statusBadgeClass(isOk: boolean) {
     : "border-amber-500/30 bg-amber-500/10 text-amber-100";
 }
 
-export default async function AutoPilotPage({ searchParams }: AutoPilotPageProps) {
+export default async function AutoPilotPage({
+  searchParams,
+}: AutoPilotPageProps) {
   const { session, currentMembership, error } = await getDashboardContext();
 
   if (error) {
@@ -151,18 +190,35 @@ export default async function AutoPilotPage({ searchParams }: AutoPilotPageProps
   let settings;
   let topics;
   let connectedPage;
-  let lastPost:
-    | {
-        id: string;
-        topic: string;
-        status: string;
-        scheduledAt: Date | null;
-        postedAt: Date | null;
-        facebookPostId: string | null;
-        facebookPostUrl: string | null;
-        errorMessage: string | null;
-      }
-    | null = null;
+  let lastPost: {
+    id: string;
+    topic: string;
+    status: string;
+    scheduledAt: Date | null;
+    postedAt: Date | null;
+    facebookPostId: string | null;
+    facebookPostUrl: string | null;
+    errorMessage: string | null;
+  } | null = null;
+  let latestRunLogs: Array<{
+    id: string;
+    runTrigger: string;
+    mode: string;
+    status: string;
+    topicTitle: string | null;
+    postId: string | null;
+    scheduledForPublish: boolean;
+    autoPilotSummary: string | null;
+    publishSummary: string | null;
+    errorMessage: string | null;
+    dueCount: number;
+    publishedCount: number;
+    failedCount: number;
+    skippedCount: number;
+    startedAt: Date;
+    finishedAt: Date | null;
+    createdAt: Date;
+  }> = [];
 
   try {
     settings = await ensureAutomationSettings(currentMembership.workspaceId);
@@ -212,6 +268,31 @@ export default async function AutoPilotPage({ searchParams }: AutoPilotPageProps
 
       lastPost = loadedLastPost ?? null;
     }
+
+    latestRunLogs = await db
+      .select({
+        id: autoPilotRunLogs.id,
+        runTrigger: autoPilotRunLogs.runTrigger,
+        mode: autoPilotRunLogs.mode,
+        status: autoPilotRunLogs.status,
+        topicTitle: autoPilotRunLogs.topicTitle,
+        postId: autoPilotRunLogs.postId,
+        scheduledForPublish: autoPilotRunLogs.scheduledForPublish,
+        autoPilotSummary: autoPilotRunLogs.autoPilotSummary,
+        publishSummary: autoPilotRunLogs.publishSummary,
+        errorMessage: autoPilotRunLogs.errorMessage,
+        dueCount: autoPilotRunLogs.dueCount,
+        publishedCount: autoPilotRunLogs.publishedCount,
+        failedCount: autoPilotRunLogs.failedCount,
+        skippedCount: autoPilotRunLogs.skippedCount,
+        startedAt: autoPilotRunLogs.startedAt,
+        finishedAt: autoPilotRunLogs.finishedAt,
+        createdAt: autoPilotRunLogs.createdAt,
+      })
+      .from(autoPilotRunLogs)
+      .where(eq(autoPilotRunLogs.workspaceId, currentMembership.workspaceId))
+      .orderBy(desc(autoPilotRunLogs.createdAt))
+      .limit(10);
   } catch (loadError) {
     return (
       <DashboardLoadError
@@ -257,7 +338,9 @@ export default async function AutoPilotPage({ searchParams }: AutoPilotPageProps
           <p className="text-sm font-medium text-blue-200">Auto Pilot</p>
           <h1 className="mt-2 text-3xl font-bold">เขียนและโพสต์อัตโนมัติ</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-            ตั้งรอบให้ระบบเลือกหัวข้อจาก Topic Queue แล้วให้ Gemini เขียนโพสต์อัตโนมัติ สามารถเลือกได้ว่าจะเก็บไว้ตรวจ หรือส่งเข้าคิวโพสต์อัตโนมัติ
+            ตั้งรอบให้ระบบเลือกหัวข้อจาก Topic Queue แล้วให้ Gemini
+            เขียนโพสต์อัตโนมัติ สามารถเลือกได้ว่าจะเก็บไว้ตรวจ
+            หรือส่งเข้าคิวโพสต์อัตโนมัติ
           </p>
         </div>
         <Link
@@ -278,7 +361,9 @@ export default async function AutoPilotPage({ searchParams }: AutoPilotPageProps
         <div className="mt-6 rounded-2xl border border-blue-500/30 bg-blue-500/10 p-4 text-sm leading-6 text-blue-100">
           <div>{runStatusMessage}</div>
           <div className="mt-2 text-xs text-blue-100/75">
-            Cron summary: due={query?.due ?? "-"}, published={query?.published ?? "-"}, failed={query?.failed ?? "-"}, skipped={query?.skipped ?? "-"}
+            Cron summary: due={query?.due ?? "-"}, published=
+            {query?.published ?? "-"}, failed={query?.failed ?? "-"}, skipped=
+            {query?.skipped ?? "-"}
           </div>
           {query?.postId ? (
             <Link
@@ -304,7 +389,8 @@ export default async function AutoPilotPage({ searchParams }: AutoPilotPageProps
         >
           <h2 className="text-xl font-semibold">ตั้งค่า Auto Pilot</h2>
           <p className="mt-2 text-sm leading-6 text-slate-400">
-            ช่วงแรกแนะนำโหมด “เขียนไว้ให้ตรวจก่อน” จนมั่นใจคุณภาพบทความ แล้วค่อยเปิดโหมดโพสต์อัตโนมัติ
+            ช่วงแรกแนะนำโหมด “เขียนไว้ให้ตรวจก่อน” จนมั่นใจคุณภาพบทความ
+            แล้วค่อยเปิดโหมดโพสต์อัตโนมัติ
           </p>
 
           <div className="mt-6 space-y-5">
@@ -326,23 +412,30 @@ export default async function AutoPilotPage({ searchParams }: AutoPilotPageProps
             </label>
 
             <label className="flex flex-col gap-2">
-              <span className="text-sm font-semibold text-slate-200">โหมดการทำงาน</span>
+              <span className="text-sm font-semibold text-slate-200">
+                โหมดการทำงาน
+              </span>
               <select
                 name="mode"
                 defaultValue={settings.mode}
                 className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-blue-500"
               >
                 <option value="draft_only">เขียนไว้ให้ตรวจก่อน</option>
-                <option value="auto_publish">เขียนแล้วโพสต์ลงเพจอัตโนมัติ</option>
+                <option value="auto_publish">
+                  เขียนแล้วโพสต์ลงเพจอัตโนมัติ
+                </option>
               </select>
               <span className="text-xs leading-5 text-slate-500">
-                โหมดโพสต์อัตโนมัติจะสร้าง Preview แล้วส่งเข้าคิวโพสต์ทันทีเมื่อ cron รันถึงเวลา
+                โหมดโพสต์อัตโนมัติจะสร้าง Preview แล้วส่งเข้าคิวโพสต์ทันทีเมื่อ
+                cron รันถึงเวลา
               </span>
             </label>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2">
-                <span className="text-sm font-semibold text-slate-200">ความถี่</span>
+                <span className="text-sm font-semibold text-slate-200">
+                  ความถี่
+                </span>
                 <select
                   name="frequencyDays"
                   defaultValue={String(settings.frequencyDays)}
@@ -356,14 +449,18 @@ export default async function AutoPilotPage({ searchParams }: AutoPilotPageProps
               </label>
 
               <label className="flex flex-col gap-2">
-                <span className="text-sm font-semibold text-slate-200">เวลาโพสต์/เขียน</span>
+                <span className="text-sm font-semibold text-slate-200">
+                  เวลาโพสต์/เขียน
+                </span>
                 <input
                   type="time"
                   name="postTime"
                   defaultValue={settings.postTime}
                   className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-blue-500"
                 />
-                <span className="text-xs text-slate-500">ใช้เวลาไทย Asia/Bangkok</span>
+                <span className="text-xs text-slate-500">
+                  ใช้เวลาไทย Asia/Bangkok
+                </span>
               </label>
             </div>
 
@@ -382,7 +479,11 @@ export default async function AutoPilotPage({ searchParams }: AutoPilotPageProps
             <div className="mt-5 space-y-4 text-sm text-slate-300">
               <div>
                 <div className="text-slate-500">สถานะ</div>
-                <div className={settings.isEnabled ? "text-emerald-100" : "text-slate-200"}>
+                <div
+                  className={
+                    settings.isEnabled ? "text-emerald-100" : "text-slate-200"
+                  }
+                >
                   {settings.isEnabled ? "เปิดใช้งาน" : "ปิดอยู่"}
                 </div>
               </div>
@@ -396,11 +497,15 @@ export default async function AutoPilotPage({ searchParams }: AutoPilotPageProps
               </div>
               <div>
                 <div className="text-slate-500">ผลลัพธ์ล่าสุด</div>
-                <div className="whitespace-pre-wrap">{settings.lastResult || "-"}</div>
+                <div className="whitespace-pre-wrap">
+                  {settings.lastResult || "-"}
+                </div>
               </div>
               {diagnosticCategory ? (
                 <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-100">
-                  <div className="font-semibold">{diagnosticCategory.title}</div>
+                  <div className="font-semibold">
+                    {diagnosticCategory.title}
+                  </div>
                   <div className="mt-1 text-xs leading-5 text-amber-100/85">
                     {diagnosticCategory.description}
                   </div>
@@ -420,13 +525,17 @@ export default async function AutoPilotPage({ searchParams }: AutoPilotPageProps
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
             <h2 className="text-xl font-semibold">Diagnostics Checklist</h2>
             <div className="mt-5 space-y-3 text-sm">
-              <div className={`rounded-xl border p-4 ${statusBadgeClass(topicCounts.active > 0)}`}>
+              <div
+                className={`rounded-xl border p-4 ${statusBadgeClass(topicCounts.active > 0)}`}
+              >
                 <div className="font-semibold">Topic Queue</div>
                 <div className="mt-1 text-xs leading-5 opacity-80">
                   หัวข้อรอใช้ {topicCounts.active} รายการ
                 </div>
               </div>
-              <div className={`rounded-xl border p-4 ${statusBadgeClass(hasGeminiApiKey)}`}>
+              <div
+                className={`rounded-xl border p-4 ${statusBadgeClass(hasGeminiApiKey)}`}
+              >
                 <div className="font-semibold">Gemini API</div>
                 <div className="mt-1 text-xs leading-5 opacity-80">
                   {hasGeminiApiKey
@@ -434,7 +543,9 @@ export default async function AutoPilotPage({ searchParams }: AutoPilotPageProps
                     : "ยังไม่พบ GEMINI_API_KEY ใน environment"}
                 </div>
               </div>
-              <div className={`rounded-xl border p-4 ${statusBadgeClass(hasConnectedPage && hasFacebookToken)}`}>
+              <div
+                className={`rounded-xl border p-4 ${statusBadgeClass(hasConnectedPage && hasFacebookToken)}`}
+              >
                 <div className="font-semibold">Facebook Page</div>
                 <div className="mt-1 text-xs leading-5 opacity-80">
                   {hasConnectedPage && hasFacebookToken
@@ -452,7 +563,8 @@ export default async function AutoPilotPage({ searchParams }: AutoPilotPageProps
 
             {isAutoPublishMode && !(hasConnectedPage && hasFacebookToken) ? (
               <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm leading-6 text-amber-100">
-                คุณเลือกโหมดโพสต์อัตโนมัติ แต่ Facebook Page ยังไม่พร้อม กรุณาเชื่อมต่อเพจก่อนใช้งานจริง
+                คุณเลือกโหมดโพสต์อัตโนมัติ แต่ Facebook Page ยังไม่พร้อม
+                กรุณาเชื่อมต่อเพจก่อนใช้งานจริง
               </div>
             ) : null}
           </div>
@@ -467,14 +579,23 @@ export default async function AutoPilotPage({ searchParams }: AutoPilotPageProps
                 </div>
                 <div>
                   <div className="text-slate-500">สถานะโพสต์</div>
-                  <div className={lastPost.status === "error" ? "text-red-100" : "text-slate-100"}>
+                  <div
+                    className={
+                      lastPost.status === "error"
+                        ? "text-red-100"
+                        : "text-slate-100"
+                    }
+                  >
                     {lastPostStatusLabel}
                   </div>
                 </div>
                 <div>
-                  <div className="text-slate-500">เวลาตั้งโพสต์ / เวลาโพสต์จริง</div>
+                  <div className="text-slate-500">
+                    เวลาตั้งโพสต์ / เวลาโพสต์จริง
+                  </div>
                   <div>
-                    {formatDate(lastPost.scheduledAt)} / {formatDate(lastPost.postedAt)}
+                    {formatDate(lastPost.scheduledAt)} /{" "}
+                    {formatDate(lastPost.postedAt)}
                   </div>
                 </div>
                 {lastPost.facebookPostId ? (
@@ -515,9 +636,12 @@ export default async function AutoPilotPage({ searchParams }: AutoPilotPageProps
           </div>
 
           <div className="rounded-2xl border border-blue-500/30 bg-blue-500/10 p-6">
-            <h2 className="text-xl font-semibold text-blue-100">ทดสอบ Auto Pilot ตอนนี้</h2>
+            <h2 className="text-xl font-semibold text-blue-100">
+              ทดสอบ Auto Pilot ตอนนี้
+            </h2>
             <p className="mt-2 text-sm leading-6 text-blue-100/80">
-              ใช้สำหรับทดสอบทันทีโดยไม่ต้องรอ cron ถ้าเลือกโหมดโพสต์อัตโนมัติ ระบบอาจโพสต์ลงเพจจริงทันที
+              ใช้สำหรับทดสอบทันทีโดยไม่ต้องรอ cron ถ้าเลือกโหมดโพสต์อัตโนมัติ
+              ระบบอาจโพสต์ลงเพจจริงทันที
             </p>
             <form action={runAutoPilotNowAction} className="mt-4">
               <SubmitButton
@@ -535,6 +659,97 @@ export default async function AutoPilotPage({ searchParams }: AutoPilotPageProps
             ) : null}
           </div>
         </aside>
+      </section>
+
+      <section className="mt-8 rounded-2xl border border-slate-800 bg-slate-900 p-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold">ประวัติ Auto Pilot</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-400">
+              ดูย้อนหลังว่าแต่ละรอบใช้หัวข้อไหน เขียนสำเร็จไหม โพสต์ลง Facebook
+              สำเร็จไหม และ error อะไร
+            </p>
+          </div>
+          <span className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300">
+            ล่าสุด {latestRunLogs.length} รายการ
+          </span>
+        </div>
+
+        {latestRunLogs.length > 0 ? (
+          <div className="mt-5 overflow-hidden rounded-2xl border border-slate-800">
+            <div className="hidden grid-cols-[1.2fr_1fr_1fr_1fr] gap-4 border-b border-slate-800 bg-slate-950 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 md:grid">
+              <div>เวลา / แหล่งที่มา</div>
+              <div>สถานะ</div>
+              <div>หัวข้อ / โพสต์</div>
+              <div>สรุป / Error</div>
+            </div>
+            <div className="divide-y divide-slate-800">
+              {latestRunLogs.map((run) => (
+                <div
+                  key={run.id}
+                  className="grid gap-4 px-4 py-4 text-sm text-slate-300 md:grid-cols-[1.2fr_1fr_1fr_1fr]"
+                >
+                  <div>
+                    <div className="font-medium text-slate-100">
+                      {formatDate(run.startedAt)}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {runTriggerLabels[run.runTrigger] || run.runTrigger} ·{" "}
+                      {run.mode}
+                    </div>
+                    {run.finishedAt ? (
+                      <div className="mt-1 text-xs text-slate-600">
+                        จบ: {formatDate(run.finishedAt)}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div>
+                    <span
+                      className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${runLogStatusClass(run.status)}`}
+                    >
+                      {runLogStatusLabels[run.status] || run.status}
+                    </span>
+                    <div className="mt-2 text-xs text-slate-500">
+                      due={run.dueCount}, published={run.publishedCount},
+                      failed={run.failedCount}, skipped={run.skippedCount}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="line-clamp-3 text-slate-100">
+                      {run.topicTitle || "-"}
+                    </div>
+                    {run.postId ? (
+                      <Link
+                        href={`/dashboard/posts/${run.postId}`}
+                        className="mt-2 inline-flex text-xs font-semibold text-blue-200 underline underline-offset-4 hover:text-blue-100"
+                      >
+                        เปิดโพสต์
+                      </Link>
+                    ) : null}
+                  </div>
+
+                  <div>
+                    <div className="whitespace-pre-wrap text-xs leading-5 text-slate-400">
+                      {run.publishSummary || run.autoPilotSummary || "-"}
+                    </div>
+                    {run.errorMessage ? (
+                      <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs leading-5 text-red-100">
+                        {run.errorMessage}
+                      </pre>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="mt-5 rounded-2xl border border-slate-800 bg-slate-950 p-5 text-sm text-slate-400">
+            ยังไม่มีประวัติ Auto Pilot ลองกด “รัน Auto Pilot ตอนนี้” หรือรอให้
+            cron ทำงานก่อน
+          </p>
+        )}
       </section>
     </div>
   );

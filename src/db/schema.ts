@@ -354,6 +354,55 @@ export const automationSettings = pgTable(
   ],
 );
 
+
+export const autoPilotRunLogs = pgTable(
+  "auto_pilot_run_logs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    automationSettingId: uuid("automation_setting_id").references(
+      () => automationSettings.id,
+      { onDelete: "set null" },
+    ),
+    postId: uuid("post_id").references(() => posts.id, {
+      onDelete: "set null",
+    }),
+
+    runTrigger: text("run_trigger").default("manual").notNull(),
+    mode: text("mode").default("draft_only").notNull(),
+    status: text("status").default("started").notNull(),
+    topicTitle: text("topic_title"),
+    scheduledForPublish: boolean("scheduled_for_publish").default(false).notNull(),
+
+    autoPilotSummary: text("auto_pilot_summary"),
+    publishSummary: text("publish_summary"),
+    errorMessage: text("error_message"),
+
+    dueCount: integer("due_count").default(0).notNull(),
+    publishedCount: integer("published_count").default(0).notNull(),
+    failedCount: integer("failed_count").default(0).notNull(),
+    skippedCount: integer("skipped_count").default(0).notNull(),
+
+    startedAt: timestamp("started_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+
+    ...timestamps,
+  },
+  (table) => [
+    index("auto_pilot_run_logs_workspace_id_idx").on(table.workspaceId),
+    index("auto_pilot_run_logs_workspace_created_idx").on(
+      table.workspaceId,
+      table.createdAt,
+    ),
+    index("auto_pilot_run_logs_status_idx").on(table.status),
+    index("auto_pilot_run_logs_post_id_idx").on(table.postId),
+  ],
+);
+
 export const aiUsageLogs = pgTable(
   "ai_usage_logs",
   {

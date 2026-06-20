@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { recordAutoPilotRunLog } from "@/lib/auto-pilot-run-logs";
 import { runDueAutoPilotJobs } from "@/lib/auto-pilot";
 import { publishDueScheduledPosts } from "@/lib/scheduled-publisher";
 
@@ -80,7 +81,9 @@ async function handlePublishScheduled(request: NextRequest) {
   }
 
   try {
-    const skipAutoPilot = request.nextUrl.searchParams.get("skipAutoPilot") === "1";
+    const startedAt = new Date();
+    const skipAutoPilot =
+      request.nextUrl.searchParams.get("skipAutoPilot") === "1";
     const autoPilotResult = skipAutoPilot
       ? null
       : await runDueAutoPilotJobs({
@@ -90,6 +93,21 @@ async function handlePublishScheduled(request: NextRequest) {
     const scheduledPublishResult = await publishDueScheduledPosts({
       limit: getNumberParam(request, "limit"),
     });
+
+    if (autoPilotResult?.results.length) {
+      const finishedAt = new Date();
+      await Promise.all(
+        autoPilotResult.results.map((autoPilotItem) =>
+          recordAutoPilotRunLog({
+            trigger: "cron",
+            autoPilotResult: autoPilotItem,
+            publishResult: scheduledPublishResult,
+            startedAt,
+            finishedAt,
+          }),
+        ),
+      );
+    }
 
     const ok = (autoPilotResult?.ok ?? true) && scheduledPublishResult.ok;
 
@@ -110,7 +128,9 @@ async function handlePublishScheduled(request: NextRequest) {
         ok: false,
         authMode: auth.mode,
         error:
-          error instanceof Error ? error.message : "Scheduled publish cron failed.",
+          error instanceof Error
+            ? error.message
+            : "Scheduled publish cron failed.",
       },
       { status: 500 },
     );
