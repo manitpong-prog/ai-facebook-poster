@@ -17,10 +17,20 @@ export type PantipPreviewSnapshot = {
 };
 
 const VIEWPORT = {
-  width: 1200,
-  height: 760,
+  width: 1080,
+  height: 720,
   deviceScaleFactor: 1,
 };
+
+const BLOCKED_RESOURCE_TYPES = new Set(["image", "media", "font"]);
+const BLOCKED_URL_PARTS = [
+  "doubleclick.net",
+  "googlesyndication.com",
+  "google-analytics.com",
+  "googletagmanager.com",
+  "facebook.net",
+  "facebook.com/tr",
+];
 
 async function getExecutablePath() {
   const envExecutablePath = process.env.PUPPETEER_EXECUTABLE_PATH?.trim();
@@ -80,11 +90,30 @@ export async function createPantipPreviewSnapshot(sourceUrl: string) {
     await page.setExtraHTTPHeaders({
       "Accept-Language": "th-TH,th;q=0.9,en-US;q=0.8,en;q=0.7",
     });
+    page.setDefaultNavigationTimeout(18_000);
+    page.setDefaultTimeout(10_000);
+
+    await page.setRequestInterception(true);
+    page.on("request", (request) => {
+      const requestUrl = request.url().toLowerCase();
+      const resourceType = request.resourceType();
+
+      if (
+        BLOCKED_RESOURCE_TYPES.has(resourceType) ||
+        BLOCKED_URL_PARTS.some((blockedPart) => requestUrl.includes(blockedPart))
+      ) {
+        void request.abort();
+        return;
+      }
+
+      void request.continue();
+    });
 
     await page.goto(sourceUrl, {
-      waitUntil: "networkidle2",
-      timeout: 30_000,
+      waitUntil: "domcontentloaded",
+      timeout: 18_000,
     });
+    await page.waitForSelector("body", { timeout: 8_000 });
 
     await page.evaluate(() => {
       const selectorsToHide = [
@@ -154,14 +183,14 @@ export async function createPantipPreviewSnapshot(sourceUrl: string) {
     const screenshotBuffer = Buffer.from(
       await page.screenshot({
         type: "jpeg",
-        quality: 78,
+        quality: 70,
         fullPage: false,
         captureBeyondViewport: false,
         clip: {
           x: 0,
           y: 0,
           width: VIEWPORT.width,
-          height: 650,
+          height: 620,
         },
       }),
     );

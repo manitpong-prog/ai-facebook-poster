@@ -4,5 +4,13 @@
       "path": "/api/cron/publish-scheduled",
       "schedule": "50 8 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "src/app/api/pantip/preview/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/pantip/publish/route.ts": {
+      "maxDuration": 60
+    }
+  }
 }

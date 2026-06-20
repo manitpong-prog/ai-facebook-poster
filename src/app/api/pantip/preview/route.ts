@@ -32,7 +32,20 @@ function getReadableError(error: unknown) {
   }
 }
 
+function logPreviewStage(stage: string, startedAt: number, extra?: Record<string, unknown>) {
+  console.info("[pantip-preview]", {
+    stage,
+    elapsedMs: Date.now() - startedAt,
+    ...extra,
+  });
+}
+
 export async function POST(request: Request) {
+  const startedAt = Date.now();
+  let stage = "start";
+  logPreviewStage(stage, startedAt);
+
+  stage = "session";
   const sessionResult = await getSessionResult();
 
   if (sessionResult.error) {
@@ -61,19 +74,30 @@ export async function POST(request: Request) {
   }
 
   try {
+    stage = "workspace";
+    logPreviewStage(stage, startedAt, { topicId: normalizedUrl.topicId });
     const currentMembership = await ensureDefaultWorkspace(
       sessionResult.session.user,
     );
     const writingProfile = await ensureDefaultWritingProfile(
       currentMembership.workspaceId,
     );
+
+    stage = "screenshot";
+    logPreviewStage(stage, startedAt, { topicId: normalizedUrl.topicId });
     const snapshot = await createPantipPreviewSnapshot(normalizedUrl.sourceUrl);
+
+    stage = "caption";
+    logPreviewStage(stage, startedAt, { topicId: normalizedUrl.topicId });
     const captionResult = await generatePantipTeaserWithGemini({
       title: snapshot.title,
       excerpt: snapshot.excerpt,
       sourceUrl: snapshot.sourceUrl,
       writingProfile,
     });
+
+    stage = "success";
+    logPreviewStage(stage, startedAt, { topicId: normalizedUrl.topicId });
 
     return NextResponse.json({
       ok: true,
@@ -87,14 +111,18 @@ export async function POST(request: Request) {
       warnings: snapshot.warnings,
     });
   } catch (error) {
-    console.error("Failed to create Pantip preview:", error);
+    console.error("Failed to create Pantip preview:", {
+      stage,
+      elapsedMs: Date.now() - startedAt,
+      error,
+    });
 
     return NextResponse.json(
       {
         ok: false,
         error:
           "สร้างตัวอย่างจาก Pantip ไม่สำเร็จ กรุณาตรวจลิงก์ ลองใหม่อีกครั้ง หรือทดสอบบน Vercel production",
-        technicalMessage: getReadableError(error),
+        technicalMessage: `stage=${stage}; elapsedMs=${Date.now() - startedAt}; ${getReadableError(error)}`,
       },
       { status: 500 },
     );

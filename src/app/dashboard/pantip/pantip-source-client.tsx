@@ -37,17 +37,43 @@ type PantipSourceClientProps = {
 type LoadingState = "idle" | "preview" | "publish";
 
 async function readApiResponse<TSuccess extends { ok: true }>(response: Response) {
-  const payload = (await response.json().catch(() => null)) as
-    | TSuccess
-    | ApiErrorResponse
-    | null;
+  const rawText = await response.text().catch(() => "");
+  let payload: TSuccess | ApiErrorResponse | null = null;
+
+  if (rawText) {
+    try {
+      payload = JSON.parse(rawText) as TSuccess | ApiErrorResponse;
+    } catch {
+      payload = null;
+    }
+  }
 
   if (!response.ok || !payload || payload.ok === false) {
     const errorPayload = payload as ApiErrorResponse | null;
+
+    if (errorPayload?.technicalMessage) {
+      throw new Error(`${errorPayload.error}
+
+รายละเอียด: ${errorPayload.technicalMessage}`);
+    }
+
+    if (errorPayload?.error) {
+      throw new Error(errorPayload.error);
+    }
+
+    const textPreview = rawText
+      .replace(/<[^>]*>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 700);
+    const statusDetail = `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""}`;
+
     throw new Error(
-      errorPayload?.technicalMessage
-        ? `${errorPayload.error}\n\nรายละเอียด: ${errorPayload.technicalMessage}`
-        : errorPayload?.error || "Request failed",
+      textPreview
+        ? `Request failed (${statusDetail})
+
+รายละเอียดจาก server: ${textPreview}`
+        : `Request failed (${statusDetail}) โดย server ไม่ได้ส่งรายละเอียดกลับมา กรุณาดู Runtime Logs ใน Vercel`,
     );
   }
 
