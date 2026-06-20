@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { eq } from "drizzle-orm";
+
 import { db } from "@/db";
 import { automationSettings } from "@/db/schema";
 import {
@@ -18,6 +20,61 @@ import { ensureDefaultWorkspace } from "@/lib/workspace";
 function buildAutoPilotRedirect(params: Record<string, string>) {
   const searchParams = new URLSearchParams(params);
   return `/dashboard/autopilot?${searchParams.toString()}`;
+}
+
+
+function buildPublishFailureDetails(
+  publishResult: Awaited<ReturnType<typeof publishDueScheduledPosts>>,
+) {
+  const failedItems = publishResult.results.filter(
+    (result) => result.status === "failed",
+  );
+
+  if (failedItems.length === 0) {
+    return "ไม่พบรายละเอียด error จากตัวโพสต์ กรุณาดู terminal เพิ่มเติม";
+  }
+
+  return failedItems
+    .map((item, index) => {
+      const details = [
+        `${index + 1}. โพสต์: ${item.topic}`,
+        `Post ID ในระบบ: ${item.postId}`,
+        `Error: ${item.errorMessage || "ไม่พบข้อความ error"}`,
+      ];
+
+      return details.join("\n");
+    })
+    .join("\n\n");
+}
+
+function buildPublishDiagnosticSummary(
+  publishResult: Awaited<ReturnType<typeof publishDueScheduledPosts>>,
+) {
+  return [
+    `dueCount=${publishResult.dueCount}`,
+    `publishedCount=${publishResult.publishedCount}`,
+    `failedCount=${publishResult.failedCount}`,
+    `skippedCount=${publishResult.skippedCount}`,
+  ].join(" | ");
+}
+
+async function updateAutoPilotPublishDiagnostics({
+  settingsId,
+  result,
+  errorMessage,
+}: {
+  settingsId: string;
+  result: string;
+  errorMessage: string | null;
+}) {
+  await db
+    .update(automationSettings)
+    .set({
+      lastResult: result,
+      lastErrorMessage: errorMessage,
+      updatedAt: new Date(),
+    })
+    .where(eq(automationSettings.id, settingsId));
 }
 
 function getTextValue(formData: FormData, key: string) {
@@ -144,6 +201,7 @@ export async function runAutoPilotNowAction() {
   }
 
   const now = new Date();
+  let redirectParams: Record<string, string>;
 
   try {
     const autoPilotResult = await runAutoPilotForWorkspaceNow({
@@ -153,25 +211,64 @@ export async function runAutoPilotNowAction() {
 
     const publishResult = await publishDueScheduledPosts({ limit: 5, now });
 
+    if (
+      autoPilotResult.status === "generated" &&
+      autoPilotResult.scheduledForPublish
+    ) {
+      if (publishResult.publishedCount > 0) {
+        await updateAutoPilotPublishDiagnostics({
+          settingsId: autoPilotResult.settingsId,
+          result: `AI เขียนและโพสต์ลง Facebook สำเร็จ (${buildPublishDiagnosticSummary(publishResult)})`,
+          errorMessage: null,
+        });
+      } else if (publishResult.failedCount > 0) {
+        await updateAutoPilotPublishDiagnostics({
+          settingsId: autoPilotResult.settingsId,
+          result: `AI เขียนสำเร็จ แต่โพสต์ลง Facebook ไม่สำเร็จ (${buildPublishDiagnosticSummary(publishResult)})`,
+          errorMessage: buildPublishFailureDetails(publishResult),
+        });
+      } else {
+        await updateAutoPilotPublishDiagnostics({
+          settingsId: autoPilotResult.settingsId,
+          result: `AI เขียนสำเร็จและส่งเข้าคิวโพสต์แล้ว แต่รอบ publish ยังไม่พบรายการที่พร้อมโพสต์ (${buildPublishDiagnosticSummary(publishResult)})`,
+          errorMessage:
+            "ระบบสร้างโพสต์และตั้งเวลาเป็นตอนนี้แล้ว แต่ publish worker ยังไม่พบรายการ due ในรอบเดียวกัน ลองกดรัน Auto Pilot ตอนนี้อีกครั้ง หรือเปิด /api/cron/publish-scheduled เพื่อให้ worker เช็กคิวโพสต์",
+        });
+      }
+    }
+
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/autopilot");
     revalidatePath("/dashboard/topics");
     revalidatePath("/dashboard/posts");
 
-    const params: Record<string, string> = {
+    const status =
+      autoPilotResult.status === "generated" &&
+      autoPilotResult.scheduledForPublish &&
+      publishResult.failedCount > 0
+        ? "publish_failed"
+        : autoPilotResult.status === "generated" &&
+            autoPilotResult.scheduledForPublish &&
+            publishResult.publishedCount > 0
+          ? "published"
+          : autoPilotResult.status;
+
+    redirectParams = {
       ran: "1",
-      status: autoPilotResult.status,
+      status,
       published: String(publishResult.publishedCount),
       failed: String(publishResult.failedCount),
+      due: String(publishResult.dueCount),
+      skipped: String(publishResult.skippedCount),
     };
 
     if (autoPilotResult.postId) {
-      params.postId = autoPilotResult.postId;
+      redirectParams.postId = autoPilotResult.postId;
     }
-
-    redirect(buildAutoPilotRedirect(params));
   } catch (error) {
     console.error("Failed to run Auto Pilot now:", error);
-    redirect(buildAutoPilotRedirect({ error: "run_failed" }));
+    redirectParams = { error: "run_failed" };
   }
+
+  redirect(buildAutoPilotRedirect(redirectParams));
 }

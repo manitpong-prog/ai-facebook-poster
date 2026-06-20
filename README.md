@@ -174,3 +174,33 @@ Topics: delete removes the topic queue item only. It does not delete a post that
 ```
 
 Posts currently in `posting` status are protected from deletion to avoid deleting a record while a publish attempt is running.
+
+## Auto Pilot diagnostics
+
+Step 22.3.2 improves `/dashboard/autopilot` so failed runs are easier to debug.
+
+The page now shows:
+
+```text
+- Topic Queue readiness
+- Gemini API readiness and current model
+- Facebook Page / Page Access Token readiness
+- Latest Auto Pilot result
+- Latest Auto Pilot error
+- Latest post created by Auto Pilot
+- Exact post-level Facebook publish error if available
+- Cron summary: due / published / failed / skipped
+```
+
+When auto-publish fails, read these areas in order:
+
+```text
+1. Blue run result banner at the top
+2. สถานะล่าสุด
+3. Error ล่าสุด
+4. Diagnostics Checklist
+5. โพสต์ล่าสุดจาก Auto Pilot
+6. Terminal output from npm run dev
+```
+
+No migration is required for Step 22.3.2.

@@ -1445,3 +1445,120 @@ npx tsc --noEmit
 Result:
 - `npm run lint` passed.
 - `npx tsc --noEmit` passed.
+
+---
+
+## 2026-06-20 - Step 22.3.2: Auto Pilot Diagnostics
+
+### Goal
+Make Auto Pilot failures easier to understand by showing exactly whether the problem is likely from Topic Queue, Gemini API, Facebook Page/token, or the publish worker.
+
+### Completed
+- Improved `/dashboard/autopilot` run result messages for auto-publish mode.
+- Added a Cron summary after manual Auto Pilot runs: due / published / failed / skipped.
+- Added a Diagnostics Checklist on `/dashboard/autopilot` for:
+  - Topic Queue readiness
+  - Gemini API key/model readiness
+  - Facebook Page + Page Access Token readiness
+- Added automatic error category hints:
+  - Gemini API issue
+  - Facebook Page/token/permission issue
+  - Topic Queue issue
+  - Unknown issue requiring terminal inspection
+- Added a “โพสต์ล่าสุดจาก Auto Pilot” section that shows:
+  - Last post topic
+  - Last local post status
+  - Scheduled/post time
+  - Facebook Post ID / URL if available
+  - Exact post-level error message if posting failed
+  - Link to open the local post record
+- Updated `runAutoPilotNowAction` so when Auto Pilot writes successfully but Facebook publishing fails, the exact publish error from the scheduled publisher is copied into `automation_settings.last_error_message`.
+- Added clearer `last_result` text for successful auto-publish, failed auto-publish, and queued-but-not-published cases.
+
+### Files updated
+- `src/app/dashboard/autopilot/actions.ts`
+- `src/app/dashboard/autopilot/page.tsx`
+- `README.md`
+- `log_project.md`
+
+### Database / Migration
+No database migration is required in this step. It reuses:
+- `automation_settings.last_result`
+- `automation_settings.last_error_message`
+- `automation_settings.last_post_id`
+- `posts.error_message`
+- existing Facebook post fields on `posts`
+
+### How to test locally
+1. Start the app with `npm run dev`.
+2. Open `/dashboard/autopilot`.
+3. Check the new Diagnostics Checklist.
+4. Test safe mode first: select `เขียนไว้ให้ตรวจก่อน`, save, then click `รัน Auto Pilot ตอนนี้`.
+5. Test auto-publish mode: select `เขียนแล้วโพสต์ลงเพจอัตโนมัติ`, save, then click `รัน Auto Pilot ตอนนี้`.
+6. If the run fails, read:
+   - the blue run summary banner
+   - `ผลลัพธ์ล่าสุด`
+   - `Error ล่าสุด`
+   - `โพสต์ล่าสุดจาก Auto Pilot`
+   - terminal output from `npm run dev`
+
+### Current status
+- Auto Pilot now exposes actionable diagnostics on the page instead of showing only a broad generic error.
+- This should make it clear whether auto-publish is failing at topic selection, Gemini writing, Facebook token/permission, or scheduled publishing.
+
+### Known issues / intentional limitations
+- There is still no dedicated historical log table for every Auto Pilot run; diagnostics show the latest run and latest generated post only.
+- The page does not expose the full Facebook token for safety; it only shows readiness status.
+- If the error is highly unusual, the terminal may still be needed for deeper debugging.
+
+### Next steps
+1. User tests Auto Pilot diagnostics in both modes.
+2. If useful, add an `automation_run_logs` table later for full history of each run.
+3. Continue improving Auto Pilot reliability and topic scheduling once diagnostics confirm the current failure source.
+
+### Validation result after implementation
+Commands run in sandbox:
+
+```powershell
+npm install
+npm run lint -- --no-cache
+npx tsc --noEmit
+npm run build
+```
+
+Result:
+- `npm run lint -- --no-cache` passed.
+- `npx tsc --noEmit` passed.
+- `npm run build` compiled successfully and started TypeScript/build analysis, then sandbox timed out during the later build phase. No TypeScript error appeared before timeout.
+
+---
+
+## Step 22.3.2 Hotfix — Auto Pilot Server Action Redirect Handling
+
+### Goal
+Fix the Auto Pilot manual run button reporting failure even when the run succeeded and created/published a post.
+
+### Root cause
+Next.js `redirect()` intentionally throws a `NEXT_REDIRECT` control-flow error. The previous `runAutoPilotNowAction` called `redirect()` inside a broad `try/catch`, so the success redirect was caught as if it were a real error and the UI was redirected to `?error=run_failed`.
+
+### Completed
+- Moved the final `redirect()` call outside the `try/catch` block.
+- Kept real errors caught and converted to `?error=run_failed`.
+- Preserved successful redirect parameters such as `ran`, `status`, `published`, `failed`, `due`, `skipped`, and `postId`.
+
+### Files updated
+- `src/app/dashboard/autopilot/actions.ts`
+- `log_project.md`
+
+### Database / Migration
+No database migration is required.
+
+### How to test locally
+1. Start the app with `npm run dev`.
+2. Open `/dashboard/autopilot`.
+3. Use either Auto Pilot mode and click `รัน Auto Pilot ตอนนี้`.
+4. If the server-side work succeeds, the page should redirect to a success URL like `?ran=1&status=published...` or `?ran=1&status=generated...`, not `?error=run_failed`.
+5. Terminal should no longer log `NEXT_REDIRECT` as a failure from `runAutoPilotNowAction`.
+
+### Current status
+Auto Pilot success redirects should now be treated as successful UI navigation rather than caught as server-action errors.

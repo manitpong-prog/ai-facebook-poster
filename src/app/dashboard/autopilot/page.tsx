@@ -5,7 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { DashboardLoadError } from "@/components/dashboard/dashboard-load-error";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { db } from "@/db";
-import { contentTopics, facebookPages } from "@/db/schema";
+import { contentTopics, facebookPages, posts } from "@/db/schema";
 import { ensureAutomationSettings } from "@/lib/auto-pilot";
 import { getDashboardContext } from "@/lib/dashboard-context";
 import { getSessionErrorMessage } from "@/lib/session";
@@ -22,6 +22,8 @@ type AutoPilotPageProps = {
     status?: string;
     published?: string;
     failed?: string;
+    due?: string;
+    skipped?: string;
     postId?: string;
     error?: string;
   }>;
@@ -31,14 +33,28 @@ const errorLabels: Record<string, string> = {
   session_failed: "อ่าน session ไม่สำเร็จ กรุณาลองโหลดหน้าใหม่แล้วทำอีกครั้ง",
   workspace_missing: "ไม่พบ Workspace สำหรับบันทึก Auto Pilot",
   save_failed: "บันทึก Auto Pilot ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
-  run_failed: "รัน Auto Pilot ไม่สำเร็จ กรุณาเช็กหัวข้อ, Gemini API หรือ Facebook Page แล้วลองใหม่",
+  run_failed:
+    "รัน Auto Pilot ไม่สำเร็จตั้งแต่ระดับ server action กรุณาดู Error ล่าสุดและ terminal",
 };
 
 const runStatusLabels: Record<string, string> = {
   generated: "Auto Pilot เลือกหัวข้อและให้ AI เขียนโพสต์สำเร็จแล้ว",
+  published: "Auto Pilot เขียนและโพสต์ลง Facebook Page สำเร็จแล้ว",
+  publish_failed:
+    "AI เขียนโพสต์สำเร็จแล้ว แต่ขั้นตอนโพสต์ลง Facebook Page ไม่สำเร็จ ดูรายละเอียดที่ Error ล่าสุด",
   no_active_topic: "ยังไม่มีหัวข้อสถานะรอใช้สำหรับ Auto Pilot",
   failed: "Auto Pilot ทำงานไม่สำเร็จ กรุณาดูรายละเอียดในสถานะล่าสุด",
   skipped: "รอบนี้ถูกข้าม เพราะมีงานอื่นกำลังรันอยู่",
+};
+
+const postStatusLabels: Record<string, string> = {
+  draft: "Draft",
+  generated: "Generated",
+  scheduled: "Scheduled",
+  posting: "Posting",
+  posted: "Posted",
+  cancelled: "Cancelled",
+  error: "Error",
 };
 
 function formatDate(value: Date | null) {
@@ -51,6 +67,65 @@ function formatDate(value: Date | null) {
     timeStyle: "short",
     timeZone: "Asia/Bangkok",
   }).format(value);
+}
+
+function getDiagnosticCategory(errorMessage: string | null) {
+  if (!errorMessage) {
+    return null;
+  }
+
+  const normalized = errorMessage.toLowerCase();
+
+  if (
+    normalized.includes("gemini") ||
+    normalized.includes("generatecontent") ||
+    normalized.includes("api_key")
+  ) {
+    return {
+      title: "น่าจะติดที่ Gemini API",
+      description:
+        "เช็ก GEMINI_API_KEY, GEMINI_MODEL, quota/rate limit และลองสร้างโพสต์แบบ manual จากหัวข้อเดียวกันอีกครั้ง",
+    };
+  }
+
+  if (
+    normalized.includes("facebook") ||
+    normalized.includes("oauth") ||
+    normalized.includes("#200") ||
+    normalized.includes("page token") ||
+    normalized.includes("permission") ||
+    normalized.includes("access token")
+  ) {
+    return {
+      title: "น่าจะติดที่ Facebook Page / Token",
+      description:
+        "เช็ก Page Access Token ใน /dashboard/facebook ว่ายังเป็นตัวเต็มและยังโพสต์ผ่าน Graph API ได้อยู่หรือไม่",
+    };
+  }
+
+  if (
+    normalized.includes("no active topic") ||
+    normalized.includes("หัวข้อ") ||
+    normalized.includes("topic")
+  ) {
+    return {
+      title: "น่าจะติดที่ Topic Queue",
+      description:
+        "เช็กว่ามีหัวข้อสถานะรอใช้ใน /dashboard/topics อย่างน้อย 1 หัวข้อ",
+    };
+  }
+
+  return {
+    title: "ยังจัดหมวด error ไม่ได้",
+    description:
+      "อ่านข้อความ Error ล่าสุดด้านล่าง และดู terminal ที่รัน npm run dev เพิ่มเติม",
+  };
+}
+
+function statusBadgeClass(isOk: boolean) {
+  return isOk
+    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
+    : "border-amber-500/30 bg-amber-500/10 text-amber-100";
 }
 
 export default async function AutoPilotPage({ searchParams }: AutoPilotPageProps) {
@@ -76,6 +151,18 @@ export default async function AutoPilotPage({ searchParams }: AutoPilotPageProps
   let settings;
   let topics;
   let connectedPage;
+  let lastPost:
+    | {
+        id: string;
+        topic: string;
+        status: string;
+        scheduledAt: Date | null;
+        postedAt: Date | null;
+        facebookPostId: string | null;
+        facebookPostUrl: string | null;
+        errorMessage: string | null;
+      }
+    | null = null;
 
   try {
     settings = await ensureAutomationSettings(currentMembership.workspaceId);
@@ -91,6 +178,7 @@ export default async function AutoPilotPage({ searchParams }: AutoPilotPageProps
         pageName: facebookPages.pageName,
         pageId: facebookPages.pageId,
         status: facebookPages.status,
+        accessTokenEncrypted: facebookPages.accessTokenEncrypted,
       })
       .from(facebookPages)
       .where(
@@ -100,6 +188,30 @@ export default async function AutoPilotPage({ searchParams }: AutoPilotPageProps
         ),
       )
       .limit(1);
+
+    if (settings.lastPostId) {
+      const [loadedLastPost] = await db
+        .select({
+          id: posts.id,
+          topic: posts.topic,
+          status: posts.status,
+          scheduledAt: posts.scheduledAt,
+          postedAt: posts.postedAt,
+          facebookPostId: posts.facebookPostId,
+          facebookPostUrl: posts.facebookPostUrl,
+          errorMessage: posts.errorMessage,
+        })
+        .from(posts)
+        .where(
+          and(
+            eq(posts.workspaceId, currentMembership.workspaceId),
+            eq(posts.id, settings.lastPostId),
+          ),
+        )
+        .limit(1);
+
+      lastPost = loadedLastPost ?? null;
+    }
   } catch (loadError) {
     return (
       <DashboardLoadError
@@ -112,6 +224,9 @@ export default async function AutoPilotPage({ searchParams }: AutoPilotPageProps
   const query = await searchParams;
   const errorMessage = query?.error ? errorLabels[query.error] : "";
   const runStatusMessage = query?.status ? runStatusLabels[query.status] : "";
+  const diagnosticCategory = getDiagnosticCategory(
+    settings.lastErrorMessage || lastPost?.errorMessage || null,
+  );
 
   const topicCounts = topics.reduce(
     (acc, topic) => {
@@ -126,8 +241,14 @@ export default async function AutoPilotPage({ searchParams }: AutoPilotPageProps
     },
   );
 
+  const hasGeminiApiKey = Boolean(process.env.GEMINI_API_KEY?.trim());
+  const geminiModel = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
   const hasConnectedPage = Boolean(connectedPage?.pageId);
+  const hasFacebookToken = Boolean(connectedPage?.accessTokenEncrypted?.trim());
   const isAutoPublishMode = settings.mode === "auto_publish";
+  const lastPostStatusLabel = lastPost
+    ? postStatusLabels[lastPost.status] || lastPost.status
+    : "-";
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -156,6 +277,9 @@ export default async function AutoPilotPage({ searchParams }: AutoPilotPageProps
       {runStatusMessage ? (
         <div className="mt-6 rounded-2xl border border-blue-500/30 bg-blue-500/10 p-4 text-sm leading-6 text-blue-100">
           <div>{runStatusMessage}</div>
+          <div className="mt-2 text-xs text-blue-100/75">
+            Cron summary: due={query?.due ?? "-"}, published={query?.published ?? "-"}, failed={query?.failed ?? "-"}, skipped={query?.skipped ?? "-"}
+          </div>
           {query?.postId ? (
             <Link
               href={`/dashboard/posts/${query.postId}`}
@@ -163,12 +287,6 @@ export default async function AutoPilotPage({ searchParams }: AutoPilotPageProps
             >
               เปิดโพสต์ที่สร้างจาก Auto Pilot
             </Link>
-          ) : null}
-          {query?.published && Number(query.published) > 0 ? (
-            <div className="mt-2">โพสต์ลง Facebook สำเร็จ {query.published} รายการ</div>
-          ) : null}
-          {query?.failed && Number(query.failed) > 0 ? (
-            <div className="mt-2 text-amber-100">มีรายการโพสต์ล้มเหลว {query.failed} รายการ</div>
           ) : null}
         </div>
       ) : null}
@@ -278,60 +396,122 @@ export default async function AutoPilotPage({ searchParams }: AutoPilotPageProps
               </div>
               <div>
                 <div className="text-slate-500">ผลลัพธ์ล่าสุด</div>
-                <div>{settings.lastResult || "-"}</div>
+                <div className="whitespace-pre-wrap">{settings.lastResult || "-"}</div>
               </div>
+              {diagnosticCategory ? (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-100">
+                  <div className="font-semibold">{diagnosticCategory.title}</div>
+                  <div className="mt-1 text-xs leading-5 text-amber-100/85">
+                    {diagnosticCategory.description}
+                  </div>
+                </div>
+              ) : null}
               {settings.lastErrorMessage ? (
                 <div>
                   <div className="text-slate-500">Error ล่าสุด</div>
-                  <div className="whitespace-pre-wrap text-red-100">
+                  <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs leading-5 text-red-100">
                     {settings.lastErrorMessage}
-                  </div>
+                  </pre>
                 </div>
               ) : null}
             </div>
           </div>
 
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
-            <h2 className="text-xl font-semibold">ความพร้อม</h2>
-            <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
-              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-                <div className="text-2xl font-bold text-emerald-100">
-                  {topicCounts.active}
+            <h2 className="text-xl font-semibold">Diagnostics Checklist</h2>
+            <div className="mt-5 space-y-3 text-sm">
+              <div className={`rounded-xl border p-4 ${statusBadgeClass(topicCounts.active > 0)}`}>
+                <div className="font-semibold">Topic Queue</div>
+                <div className="mt-1 text-xs leading-5 opacity-80">
+                  หัวข้อรอใช้ {topicCounts.active} รายการ
                 </div>
-                <div className="mt-1 text-emerald-100/80">หัวข้อรอใช้</div>
               </div>
-              <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-4">
-                <div className="text-2xl font-bold text-blue-100">
-                  {topicCounts.used}
+              <div className={`rounded-xl border p-4 ${statusBadgeClass(hasGeminiApiKey)}`}>
+                <div className="font-semibold">Gemini API</div>
+                <div className="mt-1 text-xs leading-5 opacity-80">
+                  {hasGeminiApiKey
+                    ? `พบ GEMINI_API_KEY แล้ว / model=${geminiModel}`
+                    : "ยังไม่พบ GEMINI_API_KEY ใน environment"}
                 </div>
-                <div className="mt-1 text-blue-100/80">ใช้แล้ว</div>
+              </div>
+              <div className={`rounded-xl border p-4 ${statusBadgeClass(hasConnectedPage && hasFacebookToken)}`}>
+                <div className="font-semibold">Facebook Page</div>
+                <div className="mt-1 text-xs leading-5 opacity-80">
+                  {hasConnectedPage && hasFacebookToken
+                    ? `เชื่อมต่อแล้ว: ${connectedPage?.pageName || connectedPage?.pageId}`
+                    : "ยังไม่มี Page ID หรือ Page Access Token ที่ connected"}
+                </div>
+                <Link
+                  href="/dashboard/facebook"
+                  className="mt-3 inline-flex text-xs font-semibold underline underline-offset-4"
+                >
+                  เปิดหน้าตั้งค่า Facebook Page
+                </Link>
               </div>
             </div>
 
-            <div className="mt-5 rounded-xl border border-slate-700 bg-slate-950 p-4 text-sm leading-6 text-slate-300">
-              <div className="font-semibold text-slate-100">Facebook Page</div>
-              {hasConnectedPage ? (
-                <div className="mt-2 text-emerald-100">
-                  เชื่อมต่อแล้ว: {connectedPage?.pageName || connectedPage?.pageId}
-                </div>
-              ) : (
-                <div className="mt-2 text-amber-100">
-                  ยังไม่ได้เชื่อมต่อเพจ โหมดโพสต์อัตโนมัติจะยังโพสต์ไม่ได้
-                </div>
-              )}
-              <Link
-                href="/dashboard/facebook"
-                className="mt-3 inline-flex text-sm font-semibold text-blue-200 underline underline-offset-4 hover:text-blue-100"
-              >
-                ตั้งค่า Facebook Page
-              </Link>
-            </div>
-
-            {isAutoPublishMode && !hasConnectedPage ? (
+            {isAutoPublishMode && !(hasConnectedPage && hasFacebookToken) ? (
               <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm leading-6 text-amber-100">
-                คุณเลือกโหมดโพสต์อัตโนมัติ แต่ยังไม่มี Facebook Page ที่ connected กรุณาเชื่อมต่อเพจก่อนใช้งานจริง
+                คุณเลือกโหมดโพสต์อัตโนมัติ แต่ Facebook Page ยังไม่พร้อม กรุณาเชื่อมต่อเพจก่อนใช้งานจริง
               </div>
             ) : null}
+          </div>
+
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+            <h2 className="text-xl font-semibold">โพสต์ล่าสุดจาก Auto Pilot</h2>
+            {lastPost ? (
+              <div className="mt-5 space-y-3 text-sm text-slate-300">
+                <div>
+                  <div className="text-slate-500">หัวข้อ</div>
+                  <div>{lastPost.topic}</div>
+                </div>
+                <div>
+                  <div className="text-slate-500">สถานะโพสต์</div>
+                  <div className={lastPost.status === "error" ? "text-red-100" : "text-slate-100"}>
+                    {lastPostStatusLabel}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-slate-500">เวลาตั้งโพสต์ / เวลาโพสต์จริง</div>
+                  <div>
+                    {formatDate(lastPost.scheduledAt)} / {formatDate(lastPost.postedAt)}
+                  </div>
+                </div>
+                {lastPost.facebookPostId ? (
+                  <div>
+                    <div className="text-slate-500">Facebook Post ID</div>
+                    <div>{lastPost.facebookPostId}</div>
+                  </div>
+                ) : null}
+                {lastPost.facebookPostUrl ? (
+                  <Link
+                    href={lastPost.facebookPostUrl}
+                    target="_blank"
+                    className="inline-flex text-sm font-semibold text-blue-200 underline underline-offset-4 hover:text-blue-100"
+                  >
+                    เปิดโพสต์บน Facebook
+                  </Link>
+                ) : null}
+                {lastPost.errorMessage ? (
+                  <div>
+                    <div className="text-slate-500">Error ของโพสต์ล่าสุด</div>
+                    <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs leading-5 text-red-100">
+                      {lastPost.errorMessage}
+                    </pre>
+                  </div>
+                ) : null}
+                <Link
+                  href={`/dashboard/posts/${lastPost.id}`}
+                  className="inline-flex text-sm font-semibold text-blue-200 underline underline-offset-4 hover:text-blue-100"
+                >
+                  เปิดโพสต์ในระบบ
+                </Link>
+              </div>
+            ) : (
+              <p className="mt-4 text-sm leading-6 text-slate-400">
+                ยังไม่มีโพสต์ล่าสุดจาก Auto Pilot
+              </p>
+            )}
           </div>
 
           <div className="rounded-2xl border border-blue-500/30 bg-blue-500/10 p-6">
