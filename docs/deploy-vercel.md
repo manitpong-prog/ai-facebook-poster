@@ -209,3 +209,23 @@ https://YOUR_DOMAIN/api/cron/publish-scheduled?secret=YOUR_CRON_SECRET
 [ ] Run Logs แสดงผลชัดเจน
 ```
 
+
+## Password reset on production
+
+If you want the `ลืมรหัสผ่าน?` flow to send real email, add these optional environment variables in Vercel:
+
+```text
+RESEND_API_KEY=your-resend-api-key
+PASSWORD_RESET_FROM=AI Facebook Poster <your-verified-sender@example.com>
+PASSWORD_RESET_DEBUG_LINKS=0
+```
+
+Temporary testing option:
+
+```text
+PASSWORD_RESET_DEBUG_LINKS=1
+```
+
+When debug links are enabled, `/forgot-password` can show the reset link after submitting an email. Use this only while testing because anyone with access to the page and email value could see a reset URL during that short-lived request.
+
+If `RESEND_API_KEY` is empty and debug links are disabled, reset links are logged to Vercel Function Logs. This is useful for emergency testing but not recommended for normal use.

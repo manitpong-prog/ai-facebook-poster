@@ -64,13 +64,13 @@ The project includes `vercel.json`:
   "crons": [
     {
       "path": "/api/cron/publish-scheduled",
-      "schedule": "*/10 * * * *"
+      "schedule": "0 3 * * *"
     }
   ]
 }
 ```
 
-This asks Vercel to call the scheduled publisher every 10 minutes. If `CRON_SECRET` is set in Vercel, Vercel will send it as an Authorization header automatically.
+This asks Vercel to call the scheduled publisher once per day. `0 3 * * *` is 03:00 UTC, around 10:00 Thailand time. This schedule fits Vercel Hobby limits. If `CRON_SECRET` is set in Vercel, Vercel will send it as an Authorization header automatically.
 
 ## External cron option
 
@@ -80,7 +80,7 @@ If the current Vercel plan or project settings are not suitable for frequent cro
 https://YOUR_DOMAIN/api/cron/publish-scheduled?secret=YOUR_CRON_SECRET
 ```
 
-Use every 10 minutes for normal testing. The publisher already prevents duplicate posting by claiming a scheduled post before it sends it to Facebook.
+Use every 10 minutes only if you use an external cron service or a Vercel plan that supports frequent cron checks. The publisher already prevents duplicate posting by claiming a scheduled post before it sends it to Facebook.
 
 ## Topic Queue
 
@@ -317,3 +317,26 @@ docs/deploy-vercel.md
 
 หลังแตก ZIP รอบนี้ไม่ต้องรัน migration เพราะเป็นเอกสารและ checklist สำหรับ deploy เท่านั้น
 
+
+## Forgot Password / Reset Password
+
+The app includes password reset pages:
+
+```text
+/forgot-password
+/reset-password
+```
+
+Login page now includes a `ลืมรหัสผ่าน?` link.
+
+Better Auth handles reset tokens. The server sends the reset URL through `sendResetPassword` in `src/lib/auth.ts`.
+
+Email delivery options:
+
+```text
+RESEND_API_KEY=...                 # recommended for production email delivery
+PASSWORD_RESET_FROM=...            # sender email shown in reset emails
+PASSWORD_RESET_DEBUG_LINKS=1       # local/testing only: show reset link on /forgot-password
+```
+
+For production, set `RESEND_API_KEY` in Vercel. If it is not set, reset links are written to server logs instead. `PASSWORD_RESET_DEBUG_LINKS=1` is useful for temporary testing but should be turned off before real use.

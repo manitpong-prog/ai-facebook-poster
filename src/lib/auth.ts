@@ -4,6 +4,7 @@ import { nextCookies } from "better-auth/next-js";
 
 import { db } from "@/db";
 import * as schema from "@/db/schema";
+import { sendPasswordResetEmail } from "@/lib/password-reset-email";
 import { ensureDefaultWorkspace } from "@/lib/workspace";
 
 export const auth = betterAuth({
@@ -17,6 +18,18 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     autoSignIn: true,
+    revokeSessionsOnPasswordReset: true,
+    resetPasswordTokenExpiresIn: 60 * 60,
+    sendResetPassword: async ({ user, url }) => {
+      await sendPasswordResetEmail({
+        to: user.email,
+        userName: user.name,
+        resetUrl: url,
+      });
+    },
+    onPasswordReset: async ({ user }) => {
+      console.log(`Password reset completed for ${user.email}`);
+    },
   },
 
   trustedOrigins: [process.env.BETTER_AUTH_URL ?? "http://localhost:3000"],

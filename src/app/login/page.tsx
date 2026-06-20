@@ -81,6 +81,15 @@ export default function LoginPage() {
               />
             </label>
 
+            <div className="text-right text-sm">
+              <Link
+                href="/forgot-password"
+                className="text-blue-300 hover:text-blue-200"
+              >
+                ลืมรหัสผ่าน?
+              </Link>
+            </div>
+
             {errorMessage ? (
               <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
                 {errorMessage}

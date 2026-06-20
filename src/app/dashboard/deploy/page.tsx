@@ -122,7 +122,23 @@ function getEnvChecks(): ReadinessCheck[] {
       : "ยังไม่ตั้งก็ได้ใน local แต่ควรตั้งก่อนขึ้น Vercel",
   };
 
-  return [...baseChecks, cronSecretCheck];
+  const passwordResetDeliveryCheck: ReadinessCheck = {
+    label: "Password reset delivery",
+    description:
+      "ใช้สำหรับส่งอีเมลลืมรหัสผ่าน ถ้ายังไม่มี Resend ให้ใช้ debug link ชั่วคราวตอนทดสอบได้",
+    status: hasEnvValue("RESEND_API_KEY")
+      ? "ready"
+      : process.env.PASSWORD_RESET_DEBUG_LINKS === "1"
+        ? "warning"
+        : "warning",
+    value: hasEnvValue("RESEND_API_KEY")
+      ? `Resend พร้อมใช้ · From: ${process.env.PASSWORD_RESET_FROM ?? "ค่าเริ่มต้น onboarding@resend.dev"}`
+      : process.env.PASSWORD_RESET_DEBUG_LINKS === "1"
+        ? "เปิด PASSWORD_RESET_DEBUG_LINKS=1 อยู่ ใช้ได้สำหรับทดสอบ แต่ควรปิดก่อนใช้งานจริง"
+        : "ยังไม่ตั้ง RESEND_API_KEY ระบบจะ log reset link ใน terminal/Vercel logs เท่านั้น",
+  };
+
+  return [...baseChecks, cronSecretCheck, passwordResetDeliveryCheck];
 }
 
 function getVercelChecks(): ReadinessCheck[] {
