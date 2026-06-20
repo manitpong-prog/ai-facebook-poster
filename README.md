@@ -340,3 +340,38 @@ PASSWORD_RESET_DEBUG_LINKS=1       # local/testing only: show reset link on /for
 ```
 
 For production, set `RESEND_API_KEY` in Vercel. If it is not set, reset links are written to server logs instead. `PASSWORD_RESET_DEBUG_LINKS=1` is useful for temporary testing but should be turned off before real use.
+
+## Meta App Publish Pages
+
+The app includes public pages required for Meta/Facebook app publishing:
+
+```text
+/privacy
+/terms
+/data-deletion
+```
+
+For the production domain, use these URLs in Meta for Developers Basic Settings:
+
+```text
+App Domains:
+im-sticker-poster.vercel.app
+
+Privacy Policy URL:
+https://im-sticker-poster.vercel.app/privacy
+
+Terms of Service URL:
+https://im-sticker-poster.vercel.app/terms
+
+User Data Deletion:
+Choose URL คำแนะนำการลบข้อมูล / Data Deletion Instructions URL
+https://im-sticker-poster.vercel.app/data-deletion
+```
+
+A simple 1024 x 1024 app icon is also included at:
+
+```text
+public/meta-app-icon.png
+```
+
+Upload this file in Meta for Developers if you do not have a final brand icon yet.

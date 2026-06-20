@@ -73,6 +73,21 @@ export default function HomePage() {
             </div>
           </div>
         </div>
+
+        <footer className="mt-16 flex flex-col gap-3 border-t border-slate-800 pt-6 text-sm text-slate-400 sm:flex-row sm:items-center sm:justify-between">
+          <div>© 2026 AI Facebook Poster / iM Sticker Poster</div>
+          <div className="flex flex-wrap gap-4">
+            <Link href="/privacy" className="hover:text-slate-200">
+              Privacy Policy
+            </Link>
+            <Link href="/terms" className="hover:text-slate-200">
+              Terms
+            </Link>
+            <Link href="/data-deletion" className="hover:text-slate-200">
+              Data Deletion
+            </Link>
+          </div>
+        </footer>
       </section>
     </main>
   );
