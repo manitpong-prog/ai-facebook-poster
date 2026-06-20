@@ -291,3 +291,29 @@ Recommended deployment flow:
 6. Test Facebook Page and Auto Pilot
 7. Enable Auto Pilot auto_publish only after all checks pass
 ```
+
+## Step 23.2 - Production Deploy Setup
+
+เพิ่มคู่มือเตรียม deploy production แล้ว:
+
+```text
+docs/deploy-vercel.md
+.env.vercel.example
+```
+
+สิ่งที่คู่มือครอบคลุม:
+
+```text
+- การ commit/push ด้วย GitHub Desktop
+- การ import project เข้า Vercel
+- รายการ Environment Variables ที่ต้องตั้งใน Vercel
+- การตั้ง BETTER_AUTH_URL เป็น production domain
+- การรัน Drizzle migrations กับ Neon production database
+- การทดสอบ Facebook Page token บน production
+- การใช้ Vercel Cron หรือ external cron เช่น cron-job.org
+- Smoke test หลัง deploy
+- วิธีปิด Auto Pilot หรือ rollback ชั่วคราว
+```
+
+หลังแตก ZIP รอบนี้ไม่ต้องรัน migration เพราะเป็นเอกสารและ checklist สำหรับ deploy เท่านั้น
+

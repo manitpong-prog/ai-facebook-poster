@@ -521,6 +521,51 @@ export default async function DeployReadinessPage() {
         </div>
       </section>
 
+      <section className="mt-8 rounded-2xl border border-blue-500/20 bg-blue-500/10 p-6">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-blue-100">
+              คู่มือ deploy production พร้อมแล้ว
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-blue-100/80">
+              รอบนี้เพิ่มไฟล์ `docs/deploy-vercel.md` และ `.env.vercel.example`
+              เพื่อใช้เป็นคู่มือเมื่อต้องการขึ้น Vercel จริง
+            </p>
+          </div>
+          <span className="rounded-full border border-blue-400/30 bg-blue-400/10 px-3 py-1 text-xs font-semibold text-blue-100">
+            Step 23.2
+          </span>
+        </div>
+
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
+          <div className="rounded-xl border border-blue-400/20 bg-slate-950/70 p-4">
+            <div className="text-sm font-semibold text-blue-100">
+              ไฟล์คู่มือ
+            </div>
+            <div className="mt-3 rounded-lg bg-slate-900 p-3 text-xs leading-5 text-slate-300">
+              docs/deploy-vercel.md
+            </div>
+            <p className="mt-3 text-xs leading-5 text-blue-100/70">
+              มีขั้นตอน import project, ตั้งค่า env, migration, Facebook test,
+              cron และ smoke test หลัง deploy
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-blue-400/20 bg-slate-950/70 p-4">
+            <div className="text-sm font-semibold text-blue-100">
+              Environment template
+            </div>
+            <div className="mt-3 rounded-lg bg-slate-900 p-3 text-xs leading-5 text-slate-300">
+              .env.vercel.example
+            </div>
+            <p className="mt-3 text-xs leading-5 text-blue-100/70">
+              ใช้เป็นรายการคีย์ที่ต้อง copy ไปตั้งใน Vercel Project Settings
+              โดยไม่ต้องเปิดเผยค่าจริงบนหน้าเว็บ
+            </p>
+          </div>
+        </div>
+      </section>
+
       <section className="mt-8 rounded-2xl border border-slate-800 bg-slate-900 p-6">
         <h2 className="text-xl font-semibold">ลำดับ deploy ที่แนะนำ</h2>
         <ol className="mt-4 list-decimal space-y-3 pl-5 text-sm leading-6 text-slate-300">
