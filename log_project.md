@@ -1,7 +1,7 @@
 # AI Facebook Poster - Project Log
 
 ## Project Goal
-ระบบช่วยเขียนโพสต์ Facebook Page ด้วย AI จากหัวข้อสั้น ๆ รองรับ Preview, แก้ไข, โพสต์ทันที, ตั้งเวลาโพสต์ และต่อยอดเป็น SaaS ให้ผู้ใช้อื่นเชื่อมเพจตัวเองได้ในอนาคตอันใกล้
+ระบบช่วยเขียนโพสต์ Facebook Page ด้วย AI จากหัวข้อสั้น ๆ รองรับ Preview, แก้ไข, โพสต์ทันที, ตั้งเวลาโพสต์ และต่อยอดเป็น SaaS ให้ผู้ใช้อื่นเชื่อมเพจตัวเองได้ในอนาคต
 
 ## Current Stack Decision
 - Next.js App Router
@@ -1608,3 +1608,63 @@ npm run db:migrate
 - ทดสอบ run history ด้วย manual Auto Pilot และ cron endpoint
 - ถ้าผ่าน ให้ commit: `Add Auto Pilot run logs`
 - ขั้นต่อไปอาจเพิ่ม “ล้างประวัติ Auto Pilot” หรือ “ดูประวัติแบบละเอียดรายรายการ” ได้ภายหลัง
+
+---
+
+## Step 22.5 - Topic Queue Controls / กันหัวข้อซ้ำ + ใช้หัวข้อซ้ำได้
+
+### เป้าหมาย
+ปรับ Topic Queue ให้เหมาะกับการใช้งาน Auto Pilot ระยะยาวมากขึ้น โดยกันหัวข้อซ้ำ เพิ่มการนำหัวข้อที่ใช้แล้วกลับมาใช้ซ้ำ และให้ Auto Pilot เลือกหัวข้อได้ทั้งแบบเรียงลำดับและแบบสุ่ม
+
+### สิ่งที่ทำแล้ว
+- เพิ่มการตรวจหัวข้อซ้ำตอนเพิ่มหัวข้อใหม่ โดยเทียบกับหัวข้อที่มีอยู่ใน Workspace แล้ว
+- ถ้าพบหัวข้อซ้ำ ระบบจะข้ามและแจ้งจำนวนหัวข้อที่ถูกข้าม
+- เพิ่มปุ่ม `ใช้ซ้ำอีกครั้ง` สำหรับหัวข้อสถานะ `used` เพื่อเปลี่ยนกลับเป็น `active`
+- เพิ่มปุ่ม `รีเซ็ตหัวข้อที่ใช้แล้วทั้งหมดกลับมาเป็นรอใช้`
+- เพิ่มตัวเลือกใน `/dashboard/autopilot` สำหรับวิธีเลือกหัวข้อ:
+  - `ordered` = เรียงตามลำดับคิวเดิม
+  - `random` = สุ่มจากหัวข้อที่รอใช้
+- Auto Writer / Auto Pilot ใช้ค่า `topic_selection_mode` ตอนเลือกหัวข้อจาก Topic Queue
+- หน้ารายการหัวข้อแสดงลิงก์เป็น `เปิดโพสต์ล่าสุดจากหัวข้อนี้` เพื่อให้เข้าใจว่าหัวข้อที่ถูกใช้ซ้ำอาจมีโพสต์ล่าสุดเปลี่ยนได้
+
+### ไฟล์ที่เพิ่ม
+- `drizzle/0005_topic_queue_controls.sql`
+- `drizzle/meta/0005_snapshot.json`
+
+### ไฟล์ที่แก้
+- `src/db/schema.ts`
+- `src/lib/topic-auto-writer.ts`
+- `src/lib/auto-pilot.ts`
+- `src/app/dashboard/autopilot/actions.ts`
+- `src/app/dashboard/autopilot/page.tsx`
+- `src/app/dashboard/topics/actions.ts`
+- `src/app/dashboard/topics/page.tsx`
+- `README.md`
+- `log_project.md`
+- `drizzle/meta/_journal.json`
+
+### Database / Migration
+ต้องรัน migration เพราะเพิ่ม column ใหม่ในตาราง `automation_settings`:
+
+```powershell
+npm run db:migrate
+```
+
+เพิ่ม column:
+
+```sql
+ALTER TABLE "automation_settings" ADD COLUMN "topic_selection_mode" text DEFAULT 'ordered' NOT NULL;
+```
+
+### วิธีทดสอบ
+1. รัน `npm run db:migrate` แล้ว `npm run dev`
+2. เข้า `/dashboard/topics`
+3. เพิ่มหัวข้อที่ซ้ำกับหัวข้อเดิม แล้วตรวจว่าระบบข้ามและแจ้งจำนวนหัวข้อซ้ำ
+4. ใช้หัวข้อหนึ่งให้เป็นสถานะ `used` แล้วกด `ใช้ซ้ำอีกครั้ง`
+5. กด `รีเซ็ตหัวข้อที่ใช้แล้วทั้งหมดกลับมาเป็นรอใช้`
+6. เข้า `/dashboard/autopilot`
+7. เปลี่ยนวิธีเลือกหัวข้อเป็น `สุ่มจากหัวข้อที่รอใช้` แล้วบันทึก
+8. กดรัน Auto Pilot ตอนนี้ และตรวจว่าใช้งานได้ปกติ
+
+### สถานะปัจจุบัน
+ระบบ Topic Queue พร้อมสำหรับการใช้งาน Auto Pilot แบบต่อเนื่องมากขึ้น ลดโอกาสใส่หัวข้อซ้ำโดยไม่ตั้งใจ และรองรับการวนใช้หัวข้อเดิมในอนาคต

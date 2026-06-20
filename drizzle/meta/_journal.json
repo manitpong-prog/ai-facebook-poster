@@ -36,6 +36,13 @@
       "when": 1781854200000,
       "tag": "0004_auto_pilot_run_logs",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1781857800000,
+      "tag": "0005_topic_queue_controls",
+      "breakpoints": true
     }
   ]
 }

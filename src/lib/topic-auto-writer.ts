@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import { aiUsageLogs, contentTopics, posts } from "@/db/schema";
@@ -7,9 +7,13 @@ import { ensureDefaultWritingProfile } from "@/lib/workspace";
 
 const DEFAULT_TOPIC_LIMIT = 1;
 
+export const topicSelectionModes = ["ordered", "random"] as const;
+export type TopicSelectionMode = (typeof topicSelectionModes)[number];
+
 type AutoWriteNextTopicInput = {
   workspaceId: string;
   userId?: string | null;
+  selectionMode?: TopicSelectionMode | string | null;
 };
 
 export type AutoWriteNextTopicResult =
@@ -21,7 +25,14 @@ export type AutoWriteNextTopicResult =
       topicId: string;
       topicTitle: string;
       postId: string;
+      selectionMode: TopicSelectionMode;
     };
+
+export function normalizeTopicSelectionMode(
+  value: string | null | undefined,
+): TopicSelectionMode {
+  return value === "random" ? "random" : "ordered";
+}
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
@@ -38,8 +49,11 @@ function getErrorMessage(error: unknown) {
 export async function autoWriteNextTopic({
   workspaceId,
   userId,
+  selectionMode,
 }: AutoWriteNextTopicInput): Promise<AutoWriteNextTopicResult> {
-  const [nextTopic] = await db
+  const normalizedSelectionMode = normalizeTopicSelectionMode(selectionMode);
+
+  const topicQuery = db
     .select({
       id: contentTopics.id,
       title: contentTopics.title,
@@ -53,8 +67,13 @@ export async function autoWriteNextTopic({
         eq(contentTopics.status, "active"),
       ),
     )
-    .orderBy(asc(contentTopics.priority), asc(contentTopics.createdAt))
-    .limit(DEFAULT_TOPIC_LIMIT);
+    .$dynamic();
+
+  const [nextTopic] = await (normalizedSelectionMode === "random"
+    ? topicQuery.orderBy(sql`random()`).limit(DEFAULT_TOPIC_LIMIT)
+    : topicQuery
+        .orderBy(asc(contentTopics.priority), asc(contentTopics.createdAt))
+        .limit(DEFAULT_TOPIC_LIMIT));
 
   if (!nextTopic) {
     return { status: "no_active_topic" };
@@ -86,7 +105,8 @@ export async function autoWriteNextTopic({
   let createdPostId = "";
 
   try {
-    const defaultWritingProfile = await ensureDefaultWritingProfile(workspaceId);
+    const defaultWritingProfile =
+      await ensureDefaultWritingProfile(workspaceId);
 
     const [createdPost] = await db
       .insert(posts)
@@ -125,7 +145,9 @@ export async function autoWriteNextTopic({
         errorMessage: null,
         updatedAt: new Date(),
       })
-      .where(and(eq(posts.id, createdPostId), eq(posts.workspaceId, workspaceId)));
+      .where(
+        and(eq(posts.id, createdPostId), eq(posts.workspaceId, workspaceId)),
+      );
 
     await db.insert(aiUsageLogs).values({
       workspaceId,
@@ -156,6 +178,7 @@ export async function autoWriteNextTopic({
       topicId: claimedTopic.id,
       topicTitle: claimedTopic.title,
       postId: createdPostId,
+      selectionMode: normalizedSelectionMode,
     };
   } catch (error) {
     const errorMessage = getErrorMessage(error);
@@ -182,7 +205,9 @@ export async function autoWriteNextTopic({
           errorMessage,
           updatedAt: new Date(),
         })
-        .where(and(eq(posts.id, createdPostId), eq(posts.workspaceId, workspaceId)));
+        .where(
+          and(eq(posts.id, createdPostId), eq(posts.workspaceId, workspaceId)),
+        );
     }
 
     throw error;

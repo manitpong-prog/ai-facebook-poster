@@ -248,9 +248,12 @@ export const posts = pgTable(
     workspaceId: uuid("workspace_id")
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),
-    facebookPageId: uuid("facebook_page_id").references(() => facebookPages.id, {
-      onDelete: "set null",
-    }),
+    facebookPageId: uuid("facebook_page_id").references(
+      () => facebookPages.id,
+      {
+        onDelete: "set null",
+      },
+    ),
     writingProfileId: uuid("writing_profile_id").references(
       () => writingProfiles.id,
       { onDelete: "set null" },
@@ -285,8 +288,6 @@ export const posts = pgTable(
   ],
 );
 
-
-
 export const contentTopics = pgTable(
   "content_topics",
   {
@@ -319,7 +320,6 @@ export const contentTopics = pgTable(
   ],
 );
 
-
 export const automationSettings = pgTable(
   "automation_settings",
   {
@@ -332,6 +332,9 @@ export const automationSettings = pgTable(
     mode: text("mode").default("draft_only").notNull(),
     frequencyDays: integer("frequency_days").default(1).notNull(),
     postTime: varchar("post_time", { length: 5 }).default("09:00").notNull(),
+    topicSelectionMode: text("topic_selection_mode")
+      .default("ordered")
+      .notNull(),
     timezone: text("timezone").default("Asia/Bangkok").notNull(),
 
     nextRunAt: timestamp("next_run_at", { withTimezone: true }),
@@ -345,7 +348,9 @@ export const automationSettings = pgTable(
     ...timestamps,
   },
   (table) => [
-    uniqueIndex("automation_settings_workspace_id_unique").on(table.workspaceId),
+    uniqueIndex("automation_settings_workspace_id_unique").on(
+      table.workspaceId,
+    ),
     index("automation_settings_workspace_id_idx").on(table.workspaceId),
     index("automation_settings_enabled_next_run_idx").on(
       table.isEnabled,
@@ -353,7 +358,6 @@ export const automationSettings = pgTable(
     ),
   ],
 );
-
 
 export const autoPilotRunLogs = pgTable(
   "auto_pilot_run_logs",
@@ -374,7 +378,9 @@ export const autoPilotRunLogs = pgTable(
     mode: text("mode").default("draft_only").notNull(),
     status: text("status").default("started").notNull(),
     topicTitle: text("topic_title"),
-    scheduledForPublish: boolean("scheduled_for_publish").default(false).notNull(),
+    scheduledForPublish: boolean("scheduled_for_publish")
+      .default(false)
+      .notNull(),
 
     autoPilotSummary: text("auto_pilot_summary"),
     publishSummary: text("publish_summary"),

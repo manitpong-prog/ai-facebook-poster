@@ -152,6 +152,7 @@ export async function updateAutoPilotSettingsAction(formData: FormData) {
     mode: getTextValue(formData, "mode"),
     frequencyDays: getTextValue(formData, "frequencyDays"),
     postTime: getTextValue(formData, "postTime"),
+    topicSelectionMode: getTextValue(formData, "topicSelectionMode"),
   });
 
   const now = new Date();
@@ -172,6 +173,7 @@ export async function updateAutoPilotSettingsAction(formData: FormData) {
         mode: normalizedInput.mode,
         frequencyDays: normalizedInput.frequencyDays,
         postTime: normalizedInput.postTime,
+        topicSelectionMode: normalizedInput.topicSelectionMode,
         timezone: BANGKOK_TIMEZONE,
         nextRunAt,
         lastErrorMessage: null,
@@ -184,6 +186,7 @@ export async function updateAutoPilotSettingsAction(formData: FormData) {
           mode: normalizedInput.mode,
           frequencyDays: normalizedInput.frequencyDays,
           postTime: normalizedInput.postTime,
+          topicSelectionMode: normalizedInput.topicSelectionMode,
           timezone: BANGKOK_TIMEZONE,
           nextRunAt,
           lastErrorMessage: null,

@@ -34,6 +34,10 @@ function normalizeTopicTitle(value: string) {
     .trim();
 }
 
+function normalizeTopicKey(value: string) {
+  return normalizeTopicTitle(value).toLocaleLowerCase("th-TH");
+}
+
 function buildTopicsRedirect(params: Record<string, string>) {
   const searchParams = new URLSearchParams(params);
   return `/dashboard/topics?${searchParams.toString()}`;
@@ -130,17 +134,50 @@ export async function createTopicsAction(formData: FormData) {
     redirect(buildTopicsRedirect({ error: "workspace_missing" }));
   }
 
+  let createdCount = 0;
+  let duplicateCount = 0;
+
   try {
-    await db.insert(contentTopics).values(
-      titles.map((title) => ({
-        workspaceId: workspaceResult.currentMembership.workspaceId,
-        title,
-        notes: notes || null,
-        status: "active" as const,
-        createdByUserId: workspaceResult.session.user.id,
-        updatedAt: new Date(),
-      })),
+    const existingTopics = await db
+      .select({ title: contentTopics.title })
+      .from(contentTopics)
+      .where(
+        eq(
+          contentTopics.workspaceId,
+          workspaceResult.currentMembership.workspaceId,
+        ),
+      );
+
+    const existingTopicKeys = new Set(
+      existingTopics.map((topic) => normalizeTopicKey(topic.title)),
     );
+
+    const newTitles = titles.filter((title) => {
+      const key = normalizeTopicKey(title);
+
+      if (existingTopicKeys.has(key)) {
+        duplicateCount += 1;
+        return false;
+      }
+
+      existingTopicKeys.add(key);
+      return true;
+    });
+
+    if (newTitles.length > 0) {
+      await db.insert(contentTopics).values(
+        newTitles.map((title) => ({
+          workspaceId: workspaceResult.currentMembership.workspaceId,
+          title,
+          notes: notes || null,
+          status: "active" as const,
+          createdByUserId: workspaceResult.session.user.id,
+          updatedAt: new Date(),
+        })),
+      );
+    }
+
+    createdCount = newTitles.length;
   } catch (error) {
     console.error("Failed to create content topics:", error);
     redirect(buildTopicsRedirect({ error: "create_failed" }));
@@ -148,7 +185,12 @@ export async function createTopicsAction(formData: FormData) {
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/topics");
-  redirect(buildTopicsRedirect({ created: String(titles.length) }));
+  redirect(
+    buildTopicsRedirect({
+      created: String(createdCount),
+      duplicates: String(duplicateCount),
+    }),
+  );
 }
 
 export async function deleteTopicAction(formData: FormData) {
@@ -192,6 +234,105 @@ export async function deleteTopicAction(formData: FormData) {
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/topics");
   redirect(buildTopicsRedirect({ deleted: "1" }));
+}
+
+export async function reuseTopicAction(formData: FormData) {
+  const topicId = getTextValue(formData, "topicId");
+
+  if (!topicId) {
+    redirect(buildTopicsRedirect({ error: "topic_not_found" }));
+  }
+
+  const ownedTopic = await getOwnedTopic(topicId);
+
+  if (ownedTopic.sessionError) {
+    redirect(buildTopicsRedirect({ error: "session_failed" }));
+  }
+
+  if (!ownedTopic.session) {
+    redirect("/login");
+  }
+
+  if (!ownedTopic.currentMembership || !ownedTopic.topic) {
+    redirect(buildTopicsRedirect({ error: "topic_not_found" }));
+  }
+
+  if (ownedTopic.topic.status !== "used") {
+    redirect(buildTopicsRedirect({ error: "reuse_only_used" }));
+  }
+
+  try {
+    await db
+      .update(contentTopics)
+      .set({
+        status: "active",
+        usedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(contentTopics.id, ownedTopic.topic.id),
+          eq(
+            contentTopics.workspaceId,
+            ownedTopic.currentMembership.workspaceId,
+          ),
+        ),
+      );
+  } catch (error) {
+    console.error("Failed to reuse topic:", error);
+    redirect(buildTopicsRedirect({ error: "reuse_failed" }));
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/topics");
+  redirect(buildTopicsRedirect({ reused: "1" }));
+}
+
+export async function resetUsedTopicsAction() {
+  const workspaceResult = await getWorkspaceForAction();
+
+  if (workspaceResult.sessionError) {
+    redirect(buildTopicsRedirect({ error: "session_failed" }));
+  }
+
+  if (!workspaceResult.session) {
+    redirect("/login");
+  }
+
+  if (!workspaceResult.currentMembership) {
+    redirect(buildTopicsRedirect({ error: "workspace_missing" }));
+  }
+
+  let resetCount = 0;
+
+  try {
+    const resetTopics = await db
+      .update(contentTopics)
+      .set({
+        status: "active",
+        usedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(
+            contentTopics.workspaceId,
+            workspaceResult.currentMembership.workspaceId,
+          ),
+          eq(contentTopics.status, "used"),
+        ),
+      )
+      .returning({ id: contentTopics.id });
+
+    resetCount = resetTopics.length;
+  } catch (error) {
+    console.error("Failed to reset used topics:", error);
+    redirect(buildTopicsRedirect({ error: "reset_failed" }));
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/topics");
+  redirect(buildTopicsRedirect({ reset: String(resetCount) }));
 }
 
 export async function updateTopicStatusAction(formData: FormData) {

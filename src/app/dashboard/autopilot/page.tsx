@@ -78,6 +78,11 @@ const runTriggerLabels: Record<string, string> = {
   cron: "Cron อัตโนมัติ",
 };
 
+const topicSelectionModeLabels: Record<string, string> = {
+  ordered: "เรียงตามลำดับคิว",
+  random: "สุ่มจากหัวข้อที่รอใช้",
+};
+
 function runLogStatusClass(status: string) {
   if (status === "published" || status === "generated") {
     return "border-emerald-500/30 bg-emerald-500/10 text-emerald-100";
@@ -431,6 +436,24 @@ export default async function AutoPilotPage({
               </span>
             </label>
 
+            <label className="flex flex-col gap-2">
+              <span className="text-sm font-semibold text-slate-200">
+                วิธีเลือกหัวข้อจาก Topic Queue
+              </span>
+              <select
+                name="topicSelectionMode"
+                defaultValue={settings.topicSelectionMode || "ordered"}
+                className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-blue-500"
+              >
+                <option value="ordered">เรียงตามลำดับคิว</option>
+                <option value="random">สุ่มจากหัวข้อที่รอใช้</option>
+              </select>
+              <span className="text-xs leading-5 text-slate-500">
+                แบบเรียงลำดับเหมาะกับแผนคอนเทนต์ที่เตรียมไว้
+                ส่วนแบบสุ่มเหมาะกับคลังหัวข้อที่ใช้วนได้เรื่อย ๆ
+              </span>
+            </label>
+
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2">
                 <span className="text-sm font-semibold text-slate-200">
@@ -485,6 +508,14 @@ export default async function AutoPilotPage({
                   }
                 >
                   {settings.isEnabled ? "เปิดใช้งาน" : "ปิดอยู่"}
+                </div>
+              </div>
+              <div>
+                <div className="text-slate-500">วิธีเลือกหัวข้อ</div>
+                <div>
+                  {topicSelectionModeLabels[settings.topicSelectionMode] ||
+                    settings.topicSelectionMode ||
+                    "เรียงตามลำดับคิว"}
                 </div>
               </div>
               <div>

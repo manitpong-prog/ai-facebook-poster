@@ -2,7 +2,12 @@ import { and, asc, eq, lte } from "drizzle-orm";
 
 import { db } from "@/db";
 import { automationSettings, facebookPages, posts } from "@/db/schema";
-import { autoWriteNextTopic } from "@/lib/topic-auto-writer";
+import {
+  autoWriteNextTopic,
+  normalizeTopicSelectionMode,
+  topicSelectionModes,
+  type TopicSelectionMode,
+} from "@/lib/topic-auto-writer";
 
 const DEFAULT_LIMIT_PER_RUN = 3;
 export const BANGKOK_TIMEZONE = "Asia/Bangkok";
@@ -17,6 +22,7 @@ export type AutoPilotSettingsInput = {
   mode: AutoPilotMode;
   frequencyDays: number;
   postTime: string;
+  topicSelectionMode: TopicSelectionMode;
 };
 
 type AutoPilotSettingsRow = typeof automationSettings.$inferSelect;
@@ -54,11 +60,15 @@ function normalizeLimit(value: number | undefined) {
   return Math.min(Math.max(Math.floor(value), 1), 10);
 }
 
-export function normalizeAutoPilotMode(value: string | null | undefined): AutoPilotMode {
+export function normalizeAutoPilotMode(
+  value: string | null | undefined,
+): AutoPilotMode {
   return value === "auto_publish" ? "auto_publish" : "draft_only";
 }
 
-export function normalizeFrequencyDays(value: number | string | null | undefined) {
+export function normalizeFrequencyDays(
+  value: number | string | null | undefined,
+) {
   const parsed = typeof value === "number" ? value : Number(value);
 
   if (!Number.isFinite(parsed)) {
@@ -87,12 +97,14 @@ export function normalizeAutoPilotSettingsInput(input: {
   mode?: string | null;
   frequencyDays?: number | string | null;
   postTime?: string | null;
+  topicSelectionMode?: string | null;
 }): AutoPilotSettingsInput {
   return {
     isEnabled: Boolean(input.isEnabled),
     mode: normalizeAutoPilotMode(input.mode),
     frequencyDays: normalizeFrequencyDays(input.frequencyDays),
     postTime: normalizePostTime(input.postTime),
+    topicSelectionMode: normalizeTopicSelectionMode(input.topicSelectionMode),
   };
 }
 
@@ -116,7 +128,9 @@ function addDaysToDateParts(
   parts: ReturnType<typeof getBangkokDateParts>,
   days: number,
 ) {
-  const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + days, 12));
+  const date = new Date(
+    Date.UTC(parts.year, parts.month - 1, parts.day + days, 12),
+  );
 
   return {
     year: date.getUTCFullYear(),
@@ -133,7 +147,9 @@ function makeBangkokDateTimeUtc(
   const hour = Number(hourRaw);
   const minute = Number(minuteRaw);
 
-  return new Date(Date.UTC(parts.year, parts.month - 1, parts.day, hour - 7, minute));
+  return new Date(
+    Date.UTC(parts.year, parts.month - 1, parts.day, hour - 7, minute),
+  );
 }
 
 export function getNextAutoPilotRunAt({
@@ -158,7 +174,10 @@ export function getNextAutoPilotRunAt({
     );
   }
 
-  const todayAtPostTime = makeBangkokDateTimeUtc(todayParts, normalizedPostTime);
+  const todayAtPostTime = makeBangkokDateTimeUtc(
+    todayParts,
+    normalizedPostTime,
+  );
 
   if (todayAtPostTime > from) {
     return todayAtPostTime;
@@ -189,6 +208,7 @@ export async function ensureAutomationSettings(workspaceId: string) {
       mode: "draft_only",
       frequencyDays: DEFAULT_AUTO_PILOT_FREQUENCY_DAYS,
       postTime: DEFAULT_AUTO_PILOT_TIME,
+      topicSelectionMode: topicSelectionModes[0],
       timezone: BANGKOK_TIMEZONE,
       nextRunAt: null,
       updatedAt: new Date(),
@@ -276,11 +296,15 @@ async function runClaimedAutoPilotJob({
   nextRunAt: Date;
 }): Promise<AutoPilotJobResult> {
   const mode = normalizeAutoPilotMode(settings.mode);
+  const selectionMode = normalizeTopicSelectionMode(
+    settings.topicSelectionMode,
+  );
 
   try {
     const writeResult = await autoWriteNextTopic({
       workspaceId: settings.workspaceId,
       userId: null,
+      selectionMode,
     });
 
     if (writeResult.status === "no_active_topic") {
@@ -468,7 +492,9 @@ export async function runDueAutoPilotJobs({
   const noTopicCount = results.filter(
     (result) => result.status === "no_active_topic",
   ).length;
-  const failedCount = results.filter((result) => result.status === "failed").length;
+  const failedCount = results.filter(
+    (result) => result.status === "failed",
+  ).length;
   const skippedCount = results.filter(
     (result) => result.status === "skipped",
   ).length;

@@ -14,6 +14,8 @@ import {
   createDraftFromTopicAction,
   createTopicsAction,
   deleteTopicAction,
+  resetUsedTopicsAction,
+  reuseTopicAction,
   updateTopicStatusAction,
 } from "./actions";
 
@@ -22,6 +24,9 @@ type TopicsPageProps = {
     created?: string;
     updated?: string;
     deleted?: string;
+    duplicates?: string;
+    reset?: string;
+    reused?: string;
     error?: string;
   }>;
 };
@@ -44,6 +49,9 @@ const errorLabels: Record<string, string> = {
   invalid_status: "สถานะหัวข้อไม่ถูกต้อง",
   topic_not_found: "ไม่พบหัวข้อนี้ หรือหัวข้อนี้ไม่ได้อยู่ใน Workspace ของคุณ",
   topic_already_used: "หัวข้อนี้ถูกใช้สร้าง Draft แล้ว จึงแก้สถานะไม่ได้",
+  reuse_only_used: "ใช้ซ้ำอีกครั้งได้เฉพาะหัวข้อที่สถานะใช้แล้ว",
+  reuse_failed: "เปิดหัวข้อที่ใช้แล้วกลับมาใช้งานไม่สำเร็จ",
+  reset_failed: "รีเซ็ตหัวข้อที่ใช้แล้วไม่สำเร็จ",
   topic_archived: "หัวข้อนี้ถูกเก็บถาวรแล้ว กรุณาเปิดใช้งานก่อนสร้าง Draft",
   status_failed: "อัปเดตสถานะหัวข้อไม่สำเร็จ",
   delete_failed: "ลบหัวข้อไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
@@ -132,6 +140,8 @@ export default async function TopicsPage({ searchParams }: TopicsPageProps) {
 
   const query = await searchParams;
   const createdCount = query?.created ? Number(query.created) : 0;
+  const duplicateCount = query?.duplicates ? Number(query.duplicates) : 0;
+  const resetCount = query?.reset ? Number(query.reset) : 0;
   const errorMessage = query?.error ? errorLabels[query.error] : "";
 
   const counts = topics.reduce(
@@ -174,6 +184,12 @@ export default async function TopicsPage({ searchParams }: TopicsPageProps) {
         </div>
       ) : null}
 
+      {duplicateCount > 0 ? (
+        <div className="mt-6 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          ข้ามหัวข้อซ้ำ {duplicateCount} หัวข้อ เพราะมีอยู่ในคลังแล้ว
+        </div>
+      ) : null}
+
       {query?.updated === "1" ? (
         <div className="mt-6 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
           อัปเดตสถานะหัวข้อเรียบร้อยแล้ว
@@ -183,6 +199,19 @@ export default async function TopicsPage({ searchParams }: TopicsPageProps) {
       {query?.deleted === "1" ? (
         <div className="mt-6 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
           ลบหัวข้อออกจากคลังเรียบร้อยแล้ว
+        </div>
+      ) : null}
+
+      {query?.reused === "1" ? (
+        <div className="mt-6 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+          เปิดหัวข้อที่ใช้แล้วกลับมาเป็น “รอใช้” เรียบร้อยแล้ว
+        </div>
+      ) : null}
+
+      {resetCount > 0 ? (
+        <div className="mt-6 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+          รีเซ็ตหัวข้อที่ใช้แล้วกลับมาเป็น “รอใช้” {resetCount}{" "}
+          หัวข้อเรียบร้อยแล้ว
         </div>
       ) : null}
 
@@ -220,7 +249,8 @@ export default async function TopicsPage({ searchParams }: TopicsPageProps) {
                 ].join("\n")}
               />
               <span className="text-xs text-slate-500">
-                ระบบจะตัดหัวข้อซ้ำในชุดที่วางมาให้อัตโนมัติ
+                ระบบจะตัดหัวข้อซ้ำทั้งในชุดที่วางมา
+                และหัวข้อที่มีอยู่ในคลังแล้วให้อัตโนมัติ
               </span>
             </label>
 
@@ -272,6 +302,25 @@ export default async function TopicsPage({ searchParams }: TopicsPageProps) {
               </div>
               <div className="mt-1 text-slate-400">เก็บถาวร</div>
             </div>
+          </div>
+
+          <div className="mt-6 rounded-xl border border-slate-700 bg-slate-950 p-4 text-sm leading-6 text-slate-300">
+            <div className="font-semibold text-slate-100">
+              จัดการหัวข้อที่ใช้แล้ว
+            </div>
+            <p className="mt-2 text-xs leading-5 text-slate-400">
+              ใช้เมื่อต้องการวนหัวข้อเก่ากลับมาให้ Auto Pilot เลือกอีกครั้ง
+              โดยยังเก็บลิงก์โพสต์ล่าสุดของหัวข้อนั้นไว้ให้ตรวจย้อนหลัง
+            </p>
+            <form action={resetUsedTopicsAction} className="mt-4">
+              <SubmitButton
+                disabled={counts.used === 0}
+                pendingText="กำลังรีเซ็ตหัวข้อที่ใช้แล้ว..."
+                className="w-full rounded-xl border border-blue-500/40 px-4 py-3 font-semibold text-blue-100 transition hover:bg-blue-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                รีเซ็ตหัวข้อที่ใช้แล้วทั้งหมดกลับมาเป็นรอใช้
+              </SubmitButton>
+            </form>
           </div>
 
           <div className="mt-6 rounded-xl border border-blue-500/30 bg-blue-500/10 p-4 text-sm leading-6 text-blue-100/80">
@@ -348,12 +397,24 @@ export default async function TopicsPage({ searchParams }: TopicsPageProps) {
                         href={`/dashboard/posts/${topic.createdPostId}`}
                         className="mt-3 inline-flex text-sm font-semibold text-blue-200 underline underline-offset-4 hover:text-blue-100"
                       >
-                        เปิด Draft ที่สร้างจากหัวข้อนี้
+                        เปิดโพสต์ล่าสุดจากหัวข้อนี้
                       </Link>
                     ) : null}
                   </div>
 
                   <div className="flex flex-wrap gap-2 lg:justify-end">
+                    {topic.status === "used" ? (
+                      <form action={reuseTopicAction}>
+                        <input type="hidden" name="topicId" value={topic.id} />
+                        <SubmitButton
+                          pendingText="กำลังเปิดใช้ซ้ำ..."
+                          className="rounded-xl border border-emerald-500/40 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          ใช้ซ้ำอีกครั้ง
+                        </SubmitButton>
+                      </form>
+                    ) : null}
+
                     {topic.status !== "used" && topic.status !== "archived" ? (
                       <form action={createDraftFromTopicAction}>
                         <input type="hidden" name="topicId" value={topic.id} />
