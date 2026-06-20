@@ -157,3 +157,103 @@ export async function generateFacebookPostWithGemini(
     totalTokens: usageMetadata?.totalTokenCount ?? 0,
   };
 }
+
+export type GeneratePantipTeaserInput = {
+  title: string;
+  excerpt: string;
+  sourceUrl: string;
+  writingProfile?: Pick<
+    WritingProfile,
+    | "name"
+    | "tone"
+    | "targetAudience"
+    | "rules"
+    | "favoriteWords"
+    | "bannedWords"
+    | "callToAction"
+    | "samplePosts"
+    | "maxWords"
+  > | null;
+};
+
+function buildPantipTeaserPrompt(input: GeneratePantipTeaserInput) {
+  const profile = input.writingProfile;
+  const maxWords = Math.min(profile?.maxWords ?? 120, 160);
+
+  return `คุณคือผู้ช่วยเขียน caption Facebook Page ภาษาไทยสำหรับโพสต์ชวนอ่านกระทู้ Pantip
+
+งานของคุณ:
+เขียน caption สั้น ๆ เพื่อชวนคนอ่านไปอ่านกระทู้ต้นทางต่อ โดยใช้ข้อมูลเท่าที่ให้มาเท่านั้น
+
+ชื่อกระทู้:
+${input.title}
+
+ข้อความตัวอย่างจากต้นทางแบบสั้น:
+${input.excerpt}
+
+ลิงก์ต้นทาง:
+${input.sourceUrl}
+
+สไตล์ของเพจ:
+- ชื่อสไตล์: ${profile?.name || "สไตล์หลักของฉัน"}
+- โทนภาษา: ${profile?.tone || "เป็นกันเอง อ่านง่าย เหมือนเจ้าของเพจเล่าเอง"}
+- กลุ่มเป้าหมาย: ${profile?.targetAudience || "คนอ่าน Facebook Page ทั่วไป"}
+- กติกาการเขียน: ${profile?.rules || "ย่อหน้าสั้น อ่านง่าย ไม่ขายของแรง ไม่ใช้คำเกินจริง"}
+- คำที่ชอบใช้: ${profile?.favoriteWords || ""}
+- คำที่ไม่อยากให้ใช้: ${profile?.bannedWords || ""}
+- แนวทาง CTA / ตัวอย่าง CTA: ${profile?.callToAction || "ให้ปิดท้ายแบบนุ่ม ๆ และเข้ากับเนื้อหา"}
+- ตัวอย่างโพสต์เก่า/แนวทางเพิ่มเติม: ${profile?.samplePosts || "ไม่มี"}
+
+กติกาเฉพาะสำหรับโพสต์จาก Pantip:
+1. เขียนเป็นภาษาไทยเท่านั้น
+2. ความยาวไม่เกิน ${maxWords} คำ
+3. เขียนเป็น 2-4 ย่อหน้าสั้น ๆ อ่านง่ายบนมือถือ
+4. ห้ามคัดลอกข้อความยาวจากกระทู้ ให้เขียนเป็นมุมมองสรุป/ชวนอ่านต่อเท่านั้น
+5. ห้ามดึงหรืออ้างถึงคอมเมนต์
+6. ห้ามกล่าวหา ห้ามฟันธง ห้ามขยายดราม่า และห้ามพาดพิงบุคคลจริง
+7. ถ้าประเด็นดูเสี่ยง ให้เขียนเป็นมุมกลาง ๆ เช่น “เป็นประเด็นที่ชวนคิด”
+8. ต้องมีบรรทัด “อ่านกระทู้ต้นทาง:” ตามด้วยลิงก์ต้นทางเต็ม ๆ เสมอ
+9. ห้ามใส่ markdown, bullet ยาว ๆ หรือ code block
+
+ส่งออกเป็น caption พร้อมโพสต์บน Facebook เท่านั้น`;
+}
+
+export async function generatePantipTeaserWithGemini(
+  input: GeneratePantipTeaserInput,
+): Promise<GenerateFacebookPostResult> {
+  const client = getGeminiClient();
+  const model = getGeminiModel();
+  const prompt = buildPantipTeaserPrompt(input);
+
+  let response;
+
+  try {
+    response = await client.models.generateContent({
+      model,
+      contents: prompt,
+    });
+  } catch (error) {
+    const message = getReadableGeminiError(error);
+    throw new Error(`Gemini Pantip teaser failed with model ${model}: ${message}`);
+  }
+
+  let content = cleanGeneratedText(response.text ?? "");
+
+  if (!content) {
+    throw new Error("Gemini returned empty Pantip teaser");
+  }
+
+  if (!content.includes(input.sourceUrl)) {
+    content = `${content}\n\nอ่านกระทู้ต้นทาง:\n${input.sourceUrl}`.trim();
+  }
+
+  const usageMetadata = response.usageMetadata as GeminiUsageMetadata | undefined;
+
+  return {
+    content,
+    model,
+    inputTokens: usageMetadata?.promptTokenCount ?? 0,
+    outputTokens: usageMetadata?.candidatesTokenCount ?? 0,
+    totalTokens: usageMetadata?.totalTokenCount ?? 0,
+  };
+}

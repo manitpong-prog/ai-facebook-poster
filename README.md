@@ -375,3 +375,46 @@ public/meta-app-icon.png
 ```
 
 Upload this file in Meta for Developers if you do not have a final brand icon yet.
+
+## Manual Pantip Source Post
+
+The dashboard includes a manual Pantip posting tool:
+
+```text
+/dashboard/pantip
+```
+
+Workflow:
+
+```text
+1. Paste one Pantip topic URL manually, for example https://pantip.com/topic/12345678
+2. Click Create Preview
+3. The server creates a temporary screenshot of only the top part of the thread
+4. Gemini writes a short Thai teaser caption that links back to the original thread
+5. Review and edit the caption manually
+6. Click Post to Facebook Page
+7. The image is uploaded directly to Facebook and is not saved permanently by this app
+```
+
+This feature intentionally does not include:
+
+```text
+- Random Pantip thread discovery
+- Scheduling
+- Comment scraping
+- Multi-thread selection
+- Posting without human review
+- Permanent image storage
+- Extra database history tables
+```
+
+Technical notes:
+
+```text
+- Uses the existing Facebook Page token/config from /dashboard/facebook
+- Uses the existing GEMINI_API_KEY/GEMINI_MODEL config
+- Uses puppeteer-core + @sparticuz/chromium for the temporary server-side screenshot
+- No database migration is required
+```
+
+If testing screenshot generation locally on Windows fails because Chromium cannot launch, test the feature on Vercel production or set `PUPPETEER_EXECUTABLE_PATH` to a local Chrome/Chromium executable path. This variable is optional and is not required on Vercel when the bundled serverless Chromium works.

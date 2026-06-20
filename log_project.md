@@ -1989,3 +1989,124 @@ npm run build
 ### สถานะ
 แก้ที่สาเหตุของ error ที่เกิดจาก `.next/dev/types/validator.ts` แล้ว
 
+
+---
+
+## Step 24.1 - Manual Pantip Source Post MVP
+
+### เป้าหมาย
+เพิ่มฟีเจอร์ใหม่แบบ manual สำหรับสร้างโพสต์จากลิงก์กระทู้ Pantip โดยผู้ใช้เป็นคนใส่ลิงก์เอง สร้างตัวอย่าง ตรวจเอง และกดโพสต์เอง ไม่มีระบบสุ่มหา ไม่มีระบบตั้งเวลา ไม่มีการดึงคอมเมนต์ และไม่โพสต์เองโดยไม่ให้ตรวจ
+
+### ขอบเขตที่ยืนยันแล้ว
+- ใส่ลิงก์ Pantip เองเท่านั้น
+- รองรับเฉพาะ URL รูปแบบ `https://pantip.com/topic/<topicId>`
+- Screenshot เฉพาะส่วนบนของกระทู้ ไม่ scroll ลงไปคอมเมนต์
+- ไม่ดึงคอมเมนต์
+- ไม่เก็บรูปถาวรในแอป/database/storage
+- ใช้รูปเป็นข้อมูลชั่วคราวสำหรับ preview และ upload ไป Facebook เท่านั้น
+- ใช้ Facebook Page token เดิมจากหน้า `/dashboard/facebook`
+- ใช้ Gemini token/model เดิมจาก environment variables
+- ไม่เพิ่ม database table และไม่ทำ migration
+
+### สิ่งที่ทำแล้ว
+- เพิ่มเมนู `Pantip Post` ใน Dashboard navigation
+- เพิ่มหน้า `/dashboard/pantip`
+- เพิ่ม API `/api/pantip/preview` สำหรับสร้าง screenshot preview + caption จาก Gemini
+- เพิ่ม API `/api/pantip/publish` สำหรับโพสต์รูป + caption ไป Facebook Page หลังผู้ใช้กดเอง
+- เพิ่ม helper ตรวจ URL Pantip
+- เพิ่ม helper ตรวจคำเตือนเบื้องต้น เช่น อีเมล เบอร์โทร คำเสี่ยงด้านดราม่า/ข้อกล่าวหา และประเด็นอ่อนไหว
+- เพิ่ม helper แปลง image data URL เป็น buffer ชั่วคราว
+- เพิ่ม screenshot helper ด้วย `puppeteer-core` + `@sparticuz/chromium`
+- เพิ่ม Gemini prompt เฉพาะสำหรับ caption แบบชวนอ่านกระทู้ Pantip ต่อ
+- เพิ่ม Facebook photo publisher ผ่าน Page photos endpoint logic
+- อัปเดต README พร้อมวิธีใช้งานและข้อจำกัด
+- คงระบบ Auto Pilot + Cron เดิมไว้ ไม่แก้ logic เดิม
+
+### ไฟล์ที่เพิ่ม
+- `src/app/dashboard/pantip/page.tsx`
+- `src/app/dashboard/pantip/pantip-source-client.tsx`
+- `src/app/api/pantip/preview/route.ts`
+- `src/app/api/pantip/publish/route.ts`
+- `src/lib/pantip/url.ts`
+- `src/lib/pantip/risk.ts`
+- `src/lib/pantip/image-data.ts`
+- `src/lib/pantip/screenshot.ts`
+
+### ไฟล์ที่แก้
+- `src/components/dashboard/dashboard-nav.tsx`
+- `src/lib/ai/gemini.ts`
+- `src/lib/facebook.ts`
+- `package.json`
+- `package-lock.json`
+- `tsconfig.json`
+- `README.md`
+- `log_project.md`
+
+### Dependencies เพิ่มเติม
+- `puppeteer-core`
+- `@sparticuz/chromium`
+
+เหตุผล: ใช้สำหรับเปิดหน้า Pantip ด้วย headless Chromium และ screenshot เฉพาะส่วนบนของกระทู้บน server/Vercel โดยไม่ต้องเก็บรูปถาวร
+
+### Database / Migration
+ไม่ต้องรัน migration เพราะรอบนี้ไม่เพิ่ม schema และไม่เพิ่มตารางใหม่
+
+### Environment Variables
+ไม่ต้องเพิ่ม env ใหม่สำหรับ Vercel production ตามปกติ
+
+ตัวเลือกเสริมสำหรับ local Windows เท่านั้น:
+- `PUPPETEER_EXECUTABLE_PATH` ถ้าทดสอบ screenshot ในเครื่อง local แล้ว Chromium เปิดไม่ได้ ให้ชี้ไปที่ Chrome/Chromium ในเครื่อง
+
+### วิธีทดสอบ
+1. รัน `npm install`
+2. รัน `npm run lint -- --no-cache`
+3. รัน `npx tsc --noEmit`
+4. รัน `npm run dev`
+5. เข้า `/dashboard/pantip`
+6. ใส่ลิงก์ `https://pantip.com/topic/<topicId>` หนึ่งลิงก์
+7. กด `สร้างตัวอย่างโพสต์`
+8. ตรวจ screenshot และ caption
+9. แก้ caption ถ้าต้องการ
+10. กด `โพสต์ลง Facebook Page`
+11. เปิด Facebook Page ด้วยบัญชีอื่นเพื่อตรวจว่าเห็นโพสต์รูป + caption + ลิงก์ต้นทาง
+
+### คำสั่งตรวจสอบที่รันในรอบนี้
+- `npm install puppeteer-core @sparticuz/chromium --no-audit --no-fund` ผ่าน
+- `npm run lint -- --no-cache` ผ่าน
+- `npx tsc --noEmit` ผ่าน
+- `npm run build` compile ผ่านถึงขั้น `Compiled successfully` แต่ sandbox timeout ระหว่าง `Running TypeScript` ของ Next build แม้ `npx tsc --noEmit` ผ่านแล้ว จึงแนะนำให้รัน `npm run build` บนเครื่องหรือ Vercel อีกครั้งหลังนำ ZIP ไปวางทับ
+
+### Known notes
+- ถ้า Pantip บล็อกการโหลดจาก headless browser หรือหน้าโหลดช้า ระบบจะแจ้ง error ให้ลองใหม่
+- ถ้า local Windows เปิด Chromium ไม่ได้ ให้ทดสอบบน Vercel production หรือกำหนด `PUPPETEER_EXECUTABLE_PATH`
+- ถ้ากระทู้มีข้อมูลส่วนตัว ข้อกล่าวหา หรือดราม่าแรง ผู้ใช้ควรข้าม ไม่โพสต์
+
+### สถานะปัจจุบัน
+Manual Pantip Source Post MVP พร้อมให้ทดสอบ โดยไม่กระทบระบบ Auto Pilot + Cron เดิม
+
+### หมายเหตุเพิ่มเติมหลังตรวจไฟล์ env example
+- อัปเดต `.env.vercel.example` เพิ่ม `PUPPETEER_EXECUTABLE_PATH=""` เป็นตัวเลือก local-only สำหรับเครื่อง Windows/local test เท่านั้น ไม่จำเป็นต้องตั้งบน Vercel production ตามปกติ
+
+
+---
+
+## 2026-06-20 - Fix npm package-lock registry URLs for Pantip MVP ZIP
+
+### Context
+- After receiving `ai-facebook-poster-25-pantip-mvp.zip`, `npm install` on Windows failed with `ECONNREFUSED` because `package-lock.json` contained tarball `resolved` URLs pointing to an internal OpenAI sandbox npm registry (`packages.applied-caas-gateway1.internal.api.openai.org`).
+- This was caused by generating/updating the lockfile inside the assistant sandbox environment. The user's machine and Vercel cannot access that internal registry.
+
+### Changes
+- Rewrote the affected `resolved` tarball URLs in `package-lock.json` to use the public npm registry (`https://registry.npmjs.org/...`).
+- No application code changes.
+- No database changes.
+- No new environment variables.
+
+### Files changed
+- `package-lock.json`
+- `log_project.md`
+
+### Next steps
+- Replace the project with the fixed ZIP.
+- Run `npm install` again.
+- Then run lint, typecheck, and build.

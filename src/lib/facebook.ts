@@ -156,3 +156,91 @@ export async function publishTextToFacebookPage({
     permalinkUrl,
   };
 }
+
+export type PublishFacebookPhotoInput = {
+  pageId: string;
+  pageAccessToken: string;
+  caption: string;
+  imageBuffer: Buffer;
+  imageMimeType: "image/jpeg" | "image/png" | "image/webp";
+  filename?: string;
+};
+
+export type PublishFacebookPhotoResult = PublishFacebookPostResult & {
+  photoId: string;
+};
+
+type FacebookPhotoPublishPayload = {
+  id?: string;
+  post_id?: string;
+};
+
+export async function publishPhotoToFacebookPage({
+  pageId,
+  pageAccessToken,
+  caption,
+  imageBuffer,
+  imageMimeType,
+  filename = "pantip-snapshot.jpg",
+}: PublishFacebookPhotoInput): Promise<PublishFacebookPhotoResult> {
+  const normalizedPageId = normalizeRequiredText(pageId, "Facebook Page ID");
+  const normalizedAccessToken = normalizeRequiredText(
+    pageAccessToken,
+    "Facebook Page Access Token",
+  );
+  const normalizedCaption = normalizeRequiredText(caption, "Facebook caption");
+
+  if (imageBuffer.length < 1000) {
+    throw new FacebookApiError("Facebook photo image is empty or too small");
+  }
+
+  const imageArrayBuffer = imageBuffer.buffer.slice(
+    imageBuffer.byteOffset,
+    imageBuffer.byteOffset + imageBuffer.byteLength,
+  ) as ArrayBuffer;
+  const formData = new FormData();
+  formData.append("access_token", normalizedAccessToken);
+  formData.append("caption", normalizedCaption);
+  formData.append("published", "true");
+  formData.append(
+    "source",
+    new Blob([imageArrayBuffer], { type: imageMimeType }),
+    filename,
+  );
+
+  const response = await fetch(
+    `${GRAPH_API_BASE_URL}/${encodeURIComponent(normalizedPageId)}/photos`,
+    {
+      method: "POST",
+      body: formData,
+      cache: "no-store",
+    },
+  );
+
+  const payload = (await response.json().catch(() => null)) as
+    | FacebookPhotoPublishPayload
+    | FacebookErrorPayload
+    | null;
+
+  if (!response.ok) {
+    throw buildFacebookApiError(payload, response.status);
+  }
+
+  if (!payload || !("id" in payload) || !payload.id) {
+    throw new FacebookApiError("Facebook API did not return a photo id");
+  }
+
+  const facebookPostId = "post_id" in payload && payload.post_id
+    ? payload.post_id
+    : payload.id;
+  const permalinkUrl = await getFacebookPostPermalinkUrl({
+    facebookPostId,
+    pageAccessToken: normalizedAccessToken,
+  });
+
+  return {
+    id: facebookPostId,
+    photoId: payload.id,
+    permalinkUrl,
+  };
+}

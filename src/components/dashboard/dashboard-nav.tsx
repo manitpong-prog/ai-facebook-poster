@@ -25,6 +25,11 @@ const navItems = [
     description: "คลังหัวข้อ AI",
   },
   {
+    href: "/dashboard/pantip",
+    label: "Pantip Post",
+    description: "โพสต์จากลิงก์ Pantip",
+  },
+  {
     href: "/dashboard/autopilot",
     label: "Auto Pilot",
     description: "ตั้งเวลา AI อัตโนมัติ",
