@@ -430,3 +430,9 @@ The manual Pantip Source Post flow captures the source preview using a mobile vi
 If the real Pantip mobile screenshot renders as an incomplete page, skeleton, or mostly unreadable content, the app now switches to a generated readable card from the topic title, short excerpt, and source URL. This keeps the Facebook image useful without storing images in the app.
 
 Pantip captions are intentionally short. The caption prompt now treats the extracted short excerpt as the main caption source and avoids long analysis, formal news-style language, and bot-like phrases. If Gemini returns a caption that is too long or too formal, the app falls back to a short caption based on the extracted excerpt plus the original Pantip link.
+
+
+## Pantip Source Post (current behavior)
+- Preview image now uses a readable card built from the Pantip title, short excerpt, and source URL.
+- The system no longer depends on a live Pantip webpage screenshot as the main preview image.
+- Images remain temporary only and are uploaded directly to Facebook after manual approval.

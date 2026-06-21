@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import chromium from "@sparticuz/chromium";
-import puppeteer, { type Page } from "puppeteer-core";
+import puppeteer from "puppeteer-core";
 
 import { buildImageDataUrl } from "@/lib/pantip/image-data";
 import { detectPantipRiskWarnings } from "@/lib/pantip/risk";
@@ -13,7 +13,7 @@ export type PantipPreviewSnapshot = {
   excerpt: string;
   screenshotDataUrl: string;
   screenshotMimeType: "image/jpeg";
-  imageMode: "pantip_screenshot" | "readable_card";
+  imageMode: "readable_card";
   warnings: ReturnType<typeof detectPantipRiskWarnings>;
 };
 
@@ -24,18 +24,6 @@ const MOBILE_VIEWPORT = {
   isMobile: true,
   hasTouch: true,
 };
-
-const MIN_RENDERED_TEXT_LENGTH = 80;
-
-const BLOCKED_RESOURCE_TYPES = new Set(["media", "font"]);
-const BLOCKED_URL_PARTS = [
-  "doubleclick.net",
-  "googlesyndication.com",
-  "google-analytics.com",
-  "googletagmanager.com",
-  "facebook.net",
-  "facebook.com/tr",
-];
 
 async function getExecutablePath() {
   const envExecutablePath = process.env.PUPPETEER_EXECUTABLE_PATH?.trim();
@@ -66,6 +54,10 @@ function normalizeText(value: string) {
 function truncateText(value: string, maxLength: number) {
   const normalized = normalizeText(value);
 
+  if (!normalized) {
+    return "";
+  }
+
   if (normalized.length <= maxLength) {
     return normalized;
   }
@@ -80,14 +72,56 @@ function stripPantipSuffix(value: string) {
     .trim();
 }
 
-type PantipPageMetadata = {
-  title: string;
-  excerpt: string;
-  captureY: number;
-  renderedTextLength: number;
-  foundTitleElement: boolean;
-  needsFallbackCard: boolean;
-};
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function decodeHtmlEntities(value: string) {
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&#039;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ");
+}
+
+function stripHtmlTags(value: string) {
+  return value
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ");
+}
+
+function matchMetaContent(html: string, key: string) {
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const patterns = [
+    new RegExp(`<meta[^>]+property=["']${escapedKey}["'][^>]+content=["']([^"']+)["'][^>]*>`, "i"),
+    new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+property=["']${escapedKey}["'][^>]*>`, "i"),
+    new RegExp(`<meta[^>]+name=["']${escapedKey}["'][^>]+content=["']([^"']+)["'][^>]*>`, "i"),
+    new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+name=["']${escapedKey}["'][^>]*>`, "i"),
+  ];
+
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+
+    if (match?.[1]) {
+      return decodeHtmlEntities(match[1]).trim();
+    }
+  }
+
+  return "";
+}
+
+function matchTitle(html: string) {
+  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  return titleMatch?.[1] ? decodeHtmlEntities(titleMatch[1]).trim() : "";
+}
 
 function buildFallbackCardHtml(input: {
   title: string;
@@ -99,8 +133,8 @@ function buildFallbackCardHtml(input: {
       box-sizing: border-box;
       width: 100%;
       min-height: 932px;
-      padding: 20px;
-      background: #0f172a;
+      padding: 18px;
+      background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
       color: #ffffff;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     ">
@@ -108,55 +142,69 @@ function buildFallbackCardHtml(input: {
         overflow: hidden;
         min-height: 892px;
         border-radius: 34px;
-        border: 1px solid rgba(148,163,184,0.36);
-        background: #1f2f5f;
-        box-shadow: 0 22px 70px rgba(0,0,0,0.36);
+        border: 1px solid rgba(148,163,184,0.28);
+        background: #1e3a8a;
+        box-shadow: 0 22px 70px rgba(0,0,0,0.34);
       ">
         <div style="
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 14px 18px;
+          padding: 15px 18px;
           background: #2f245f;
           color: #fde68a;
           font-size: 15px;
           font-weight: 800;
         ">
           <span>Pantip</span>
-          <span style="font-size: 12px; color: #d8b4fe; font-weight: 600;">กระทู้น่าอ่าน</span>
+          <span style="font-size: 12px; color: #ddd6fe; font-weight: 700;">กระทู้น่าอ่าน</span>
         </div>
-        <div style="padding: 26px 22px 22px;">
+        <div style="padding: 24px 22px 22px;">
           <div style="
             display: inline-flex;
             border-radius: 999px;
             background: rgba(253,224,71,0.16);
-            border: 1px solid rgba(253,224,71,0.28);
+            border: 1px solid rgba(253,224,71,0.30);
             padding: 7px 12px;
             color: #fde047;
             font-size: 13px;
-            font-weight: 750;
+            font-weight: 760;
           ">จากลิงก์ต้นทาง</div>
           <h1 style="
-            margin: 24px 0 0;
-            font-size: 28px;
-            line-height: 1.28;
-            font-weight: 850;
+            margin: 22px 0 0;
+            font-size: 27px;
+            line-height: 1.3;
+            font-weight: 860;
             color: #ffffff;
             letter-spacing: -0.01em;
           ">${escapeHtml(input.title)}</h1>
-          <p style="
-            margin: 22px 0 0;
-            font-size: 20px;
-            line-height: 1.62;
-            color: #dbeafe;
-            font-weight: 520;
-          ">${escapeHtml(input.excerpt)}</p>
           <div style="
-            margin-top: 30px;
+            margin-top: 18px;
+            padding: 18px;
             border-radius: 22px;
+            background: rgba(15,23,42,0.35);
+            border: 1px solid rgba(191,219,254,0.22);
+          ">
+            <div style="
+              margin-bottom: 10px;
+              color: #cbd5e1;
+              font-size: 13px;
+              font-weight: 700;
+            ">ตัวอย่างข้อความสั้น ๆ</div>
+            <p style="
+              margin: 0;
+              font-size: 19px;
+              line-height: 1.62;
+              color: #e2e8f0;
+              font-weight: 520;
+            ">${escapeHtml(input.excerpt)}</p>
+          </div>
+          <div style="
+            margin-top: 22px;
+            border-radius: 20px;
             background: rgba(15,23,42,0.68);
             border: 1px solid rgba(191,219,254,0.28);
-            padding: 16px 18px;
+            padding: 14px 16px;
             color: #bfdbfe;
             font-size: 14px;
             line-height: 1.5;
@@ -167,77 +215,55 @@ function buildFallbackCardHtml(input: {
     </section>
   `;
 }
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
 
-
-type VisibleViewportProbe = {
-  titleVisible: boolean;
-  thaiTextLength: number;
-  digitCount: number;
-  textLength: number;
-  visibleTextPreview: string;
+type PantipMetadata = {
+  title: string;
+  excerpt: string;
 };
 
-async function readVisibleViewportProbe(page: Page, title: string) {
-  return (await page.evaluate((titleValue) => {
-    function normalize(value: string) {
-      return value.replace(/\s+/g, " ").trim();
-    }
+async function fetchPantipMetadata(sourceUrl: string): Promise<PantipMetadata> {
+  const response = await fetch(sourceUrl, {
+    headers: {
+      "Accept-Language": "th-TH,th;q=0.9,en-US;q=0.8,en;q=0.7",
+      "User-Agent":
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+    },
+    cache: "no-store",
+  });
 
-    function isVisibleElement(element: Element) {
-      const rect = element.getBoundingClientRect();
+  if (!response.ok) {
+    throw new Error(`โหลดหน้า Pantip ไม่สำเร็จ (HTTP ${response.status})`);
+  }
 
-      if (rect.width < 2 || rect.height < 2) {
-        return false;
-      }
+  const html = await response.text();
 
-      if (rect.bottom < 0 || rect.top > window.innerHeight) {
-        return false;
-      }
+  const ogTitle = matchMetaContent(html, "og:title");
+  const ogDescription = matchMetaContent(html, "og:description");
+  const description = matchMetaContent(html, "description");
+  const rawTitle = stripPantipSuffix(ogTitle || matchTitle(html) || "กระทู้ Pantip");
 
-      const style = window.getComputedStyle(element);
+  const bodyText = normalizeText(decodeHtmlEntities(stripHtmlTags(html)));
+  const rawExcerpt = ogDescription || description || bodyText || rawTitle;
 
-      return (
-        style.display !== "none" &&
-        style.visibility !== "hidden" &&
-        Number(style.opacity || "1") > 0.05
-      );
-    }
+  const title = truncateText(rawTitle || "กระทู้ Pantip", 140) || "กระทู้ Pantip";
+  let excerpt = truncateText(rawExcerpt || title, 320) || title;
 
-    const visibleText = normalize(
-      Array.from(document.querySelectorAll("body *"))
-        .filter(isVisibleElement)
-        .map((element) => element.textContent || "")
-        .join(" "),
-    );
-    const titleProbe = normalize(titleValue).slice(0, 18);
-    const thaiTextLength = (visibleText.match(/[ก-๙]/g) || []).length;
-    const digitCount = (visibleText.match(/[0-9]/g) || []).length;
+  if (excerpt === title && bodyText) {
+    const withoutTitle = bodyText.replace(title, "").trim();
+    excerpt = truncateText(withoutTitle || title, 320) || title;
+  }
 
-    return {
-      titleVisible: titleProbe.length < 8 || visibleText.includes(titleProbe),
-      thaiTextLength,
-      digitCount,
-      textLength: visibleText.length,
-      visibleTextPreview: visibleText.slice(0, 180),
-    } satisfies VisibleViewportProbe;
-  }, title)) as VisibleViewportProbe;
+  return {
+    title,
+    excerpt,
+  };
 }
 
-function shouldUseReadableCard(probe: VisibleViewportProbe) {
-  const digitRatio = probe.textLength > 0 ? probe.digitCount / probe.textLength : 0;
-
-  return !probe.titleVisible || probe.thaiTextLength < 45 || digitRatio > 0.28;
-}
-
-export async function createPantipPreviewSnapshot(sourceUrl: string) {
+async function renderReadableCardImage(input: {
+  title: string;
+  excerpt: string;
+  sourceUrl: string;
+}) {
   const browser = await puppeteer.launch({
     args: [
       ...chromium.args,
@@ -252,249 +278,48 @@ export async function createPantipPreviewSnapshot(sourceUrl: string) {
 
   try {
     const page = await browser.newPage();
-
-    await page.setUserAgent(
-      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
-    );
-    await page.setExtraHTTPHeaders({
-      "Accept-Language": "th-TH,th;q=0.9,en-US;q=0.8,en;q=0.7",
+    await page.setViewport(MOBILE_VIEWPORT);
+    await page.setContent(buildFallbackCardHtml(input), {
+      waitUntil: "load",
     });
-    page.setDefaultNavigationTimeout(22_000);
-    page.setDefaultTimeout(12_000);
-
-    await page.setRequestInterception(true);
-    page.on("request", (request) => {
-      const requestUrl = request.url().toLowerCase();
-      const resourceType = request.resourceType();
-
-      if (
-        BLOCKED_RESOURCE_TYPES.has(resourceType) ||
-        BLOCKED_URL_PARTS.some((blockedPart) =>
-          requestUrl.includes(blockedPart),
-        )
-      ) {
-        void request.abort();
-        return;
-      }
-
-      void request.continue();
-    });
-
-    await page.goto(sourceUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: 22_000,
-    });
-    await page.waitForSelector("body", { timeout: 8_000 });
-    await page
-      .waitForFunction(() => document.body.innerText.trim().length > 60, {
-        timeout: 8_000,
-      })
-      .catch(() => undefined);
-
     await page.evaluate(() => {
-      const style = document.createElement("style");
-      style.setAttribute("data-ai-pantip-preview", "true");
-      style.textContent = `
-        html,
-        body {
-          width: 430px !important;
-          max-width: 430px !important;
-          overflow-x: hidden !important;
-          background: #f8fafc !important;
-        }
-        iframe,
-        [class*="comment"],
-        [id*="comment"],
-        [class*="Comment"],
-        [id*="Comment"],
-        [data-testid*="comment"],
-        [data-testid*="Comment"] {
-          visibility: hidden !important;
-        }
-        [class*="ads"],
-        [id*="ads"],
-        [class*="Ads"],
-        [id*="Ads"],
-        [class*="banner"],
-        [id*="banner"] {
-          display: none !important;
-        }
-      `;
-      document.head.appendChild(style);
+      document.body.style.margin = "0";
+      document.documentElement.style.background = "#0f172a";
+      window.scrollTo(0, 0);
     });
+    await new Promise((resolve) => setTimeout(resolve, 120));
 
-    const metadata = (await page.evaluate(() => {
-      function normalize(value: string) {
-        return value.replace(/\s+/g, " ").trim();
-      }
-
-      function readMeta(selector: string) {
-        const element = document.querySelector(selector);
-
-        if (element instanceof HTMLMetaElement) {
-          return element.content?.trim() || "";
-        }
-
-        return "";
-      }
-
-      function readSelector(selectors: string[]) {
-        for (const selector of selectors) {
-          const element = document.querySelector(selector);
-
-          if (!element) {
-            continue;
-          }
-
-          if (element instanceof HTMLMetaElement) {
-            const content = normalize(element.content || "");
-
-            if (content) {
-              return content;
-            }
-          }
-
-          const text = normalize(element.textContent || "");
-
-          if (text) {
-            return text;
-          }
-        }
-
-        return "";
-      }
-
-      const title =
-        readMeta("meta[property='og:title']") || readSelector(["h1", "title"]);
-      const excerpt =
-        readMeta("meta[property='og:description']") ||
-        readMeta("meta[name='description']") ||
-        readSelector(["article", "main", "body"]);
-      const cleanTitle = normalize(
-        title
-          .replace(/\s*-\s*Pantip\s*$/i, "")
-          .replace(/\s*\|\s*Pantip\s*$/i, ""),
-      );
-      const titleProbe = cleanTitle.slice(0, Math.min(cleanTitle.length, 30));
-      let captureY = 0;
-      let foundTitleElement = false;
-
-      if (titleProbe.length >= 10) {
-        const elements = Array.from(
-          document.querySelectorAll("h1,h2,h3,article,main,section,div,span"),
-        );
-        const targetElement = elements.find((element) =>
-          normalize(element.textContent || "").includes(titleProbe),
-        );
-
-        if (targetElement) {
-          foundTitleElement = true;
-          const rect = targetElement.getBoundingClientRect();
-          captureY = Math.max(0, rect.top + window.scrollY - 48);
-        }
-      }
-
-      const renderedTextLength = normalize(
-        document.body.innerText || "",
-      ).length;
-
-      return {
-        title: cleanTitle || title,
-        excerpt,
-        captureY,
-        renderedTextLength,
-        foundTitleElement,
-        needsFallbackCard: renderedTextLength < 160 || !foundTitleElement,
-      };
-    })) as PantipPageMetadata;
-
-    const title = truncateText(
-      stripPantipSuffix(metadata.title) || "กระทู้ Pantip",
-      140,
-    );
-    const excerpt = truncateText(metadata.excerpt || title, 360);
-    const warnings = detectPantipRiskWarnings(`${title}\n${excerpt}`);
-    const needsFallbackCard =
-      metadata.needsFallbackCard ||
-      !metadata.foundTitleElement ||
-      metadata.renderedTextLength < MIN_RENDERED_TEXT_LENGTH;
-
-    let imageMode: PantipPreviewSnapshot["imageMode"] = "pantip_screenshot";
-
-    if (needsFallbackCard) {
-      imageMode = "readable_card";
-      await page.evaluate(
-        ({ html }) => {
-          document.body.innerHTML = html;
-          document.body.style.margin = "0";
-          document.documentElement.style.background = "#101827";
-        },
-        {
-          html: buildFallbackCardHtml({
-            title,
-            excerpt,
-            sourceUrl,
-          }),
-        },
-      );
-    } else {
-      await page.evaluate(
-        (captureY) => window.scrollTo(0, captureY),
-        metadata.captureY,
-      );
-      await new Promise((resolve) => setTimeout(resolve, 900));
-
-      const visibleProbe = await readVisibleViewportProbe(page, title);
-
-      if (shouldUseReadableCard(visibleProbe)) {
-        console.info(
-          "[pantip-preview] switching to readable card because rendered screenshot looks incomplete",
-          {
-            titleVisible: visibleProbe.titleVisible,
-            thaiTextLength: visibleProbe.thaiTextLength,
-            digitCount: visibleProbe.digitCount,
-            textLength: visibleProbe.textLength,
-            visibleTextPreview: visibleProbe.visibleTextPreview,
-          },
-        );
-        imageMode = "readable_card";
-        await page.evaluate(
-          ({ html }) => {
-            document.body.innerHTML = html;
-            document.body.style.margin = "0";
-            document.documentElement.style.background = "#101827";
-            window.scrollTo(0, 0);
-          },
-          {
-            html: buildFallbackCardHtml({
-              title,
-              excerpt,
-              sourceUrl,
-            }),
-          },
-        );
-      }
-    }
-
-    const screenshotBuffer = Buffer.from(
+    return Buffer.from(
       await page.screenshot({
         type: "jpeg",
-        quality: 84,
+        quality: 88,
         fullPage: false,
         captureBeyondViewport: false,
       }),
     );
-
-    return {
-      sourceUrl,
-      title,
-      excerpt,
-      screenshotDataUrl: buildImageDataUrl(screenshotBuffer, "image/jpeg"),
-      screenshotMimeType: "image/jpeg" as const,
-      imageMode,
-      warnings,
-    } satisfies PantipPreviewSnapshot;
   } finally {
     await browser.close();
   }
+}
+
+export async function createPantipPreviewSnapshot(sourceUrl: string) {
+  const metadata = await fetchPantipMetadata(sourceUrl);
+  const title = metadata.title;
+  const excerpt = metadata.excerpt;
+  const warnings = detectPantipRiskWarnings(`${title}\n${excerpt}`);
+  const screenshotBuffer = await renderReadableCardImage({
+    title,
+    excerpt,
+    sourceUrl,
+  });
+
+  return {
+    sourceUrl,
+    title,
+    excerpt,
+    screenshotDataUrl: buildImageDataUrl(screenshotBuffer, "image/jpeg"),
+    screenshotMimeType: "image/jpeg" as const,
+    imageMode: "readable_card" as const,
+    warnings,
+  } satisfies PantipPreviewSnapshot;
 }
