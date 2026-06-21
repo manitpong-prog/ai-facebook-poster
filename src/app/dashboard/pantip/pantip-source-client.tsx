@@ -210,7 +210,7 @@ export function PantipSourceClient({
               {loadingState === "preview" ? "กำลังสร้างตัวอย่าง..." : "สร้างตัวอย่างโพสต์"}
             </button>
             <p className="text-xs leading-5 text-slate-500">
-              จะ screenshot เฉพาะส่วนบนของกระทู้ ไม่ scroll ลงไปคอมเมนต์ และไม่บันทึกรูปไว้ในระบบเรา
+              จะ screenshot แบบหน้าจอมือถือเฉพาะส่วนบนของกระทู้ ไม่ scroll ลงไปคอมเมนต์ และไม่บันทึกรูปไว้ในระบบเรา
             </p>
           </div>
         </div>
@@ -245,7 +245,7 @@ export function PantipSourceClient({
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-lg font-semibold">Preview รูปกระทู้</h2>
-                <p className="mt-1 text-xs text-slate-500">ระบบจะใช้รูปนี้โพสต์ขึ้น Facebook โดยตรง แล้วไม่เก็บรูปไว้ในแอป</p>
+                <p className="mt-1 text-xs text-slate-500">ระบบจะใช้รูปนี้โพสต์ขึ้น Facebook โดยตรง เป็นภาพแนวหน้าจอมือถือ แล้วไม่เก็บรูปไว้ในแอป</p>
               </div>
               <a
                 href={preview.sourceUrl}
@@ -260,7 +260,7 @@ export function PantipSourceClient({
             <img
               src={preview.screenshotDataUrl}
               alt={`Pantip snapshot: ${preview.title}`}
-              className="w-full rounded-2xl border border-slate-700 bg-slate-950 object-contain"
+              className="mx-auto w-full max-w-[430px] rounded-2xl border border-slate-700 bg-slate-950 object-contain"
             />
           </div>
 

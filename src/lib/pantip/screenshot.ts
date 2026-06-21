@@ -16,14 +16,14 @@ export type PantipPreviewSnapshot = {
   warnings: ReturnType<typeof detectPantipRiskWarnings>;
 };
 
-const VIEWPORT = {
-  width: 1080,
-  height: 760,
-  deviceScaleFactor: 1,
+const MOBILE_VIEWPORT = {
+  width: 430,
+  height: 932,
+  deviceScaleFactor: 2,
+  isMobile: true,
+  hasTouch: true,
 };
 
-const SCREENSHOT_WIDTH = 1080;
-const SCREENSHOT_HEIGHT = 720;
 const MIN_RENDERED_TEXT_LENGTH = 80;
 
 const BLOCKED_RESOURCE_TYPES = new Set(["media", "font"]);
@@ -97,8 +97,8 @@ function buildFallbackCardHtml(input: {
     <section id="ai-pantip-source-card" style="
       box-sizing: border-box;
       width: 100%;
-      min-height: 700px;
-      padding: 48px;
+      min-height: 932px;
+      padding: 28px;
       background: linear-gradient(135deg, #2c2260 0%, #1d1740 48%, #101827 100%);
       color: #ffffff;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -110,35 +110,35 @@ function buildFallbackCardHtml(input: {
         border-radius: 999px;
         background: rgba(255,255,255,0.12);
         border: 1px solid rgba(255,255,255,0.18);
-        padding: 10px 18px;
+        padding: 8px 14px;
         color: #fde68a;
-        font-size: 24px;
+        font-size: 16px;
         font-weight: 700;
         letter-spacing: 0.01em;
       ">Pantip topic</div>
       <h1 style="
-        margin: 32px 0 0;
-        max-width: 920px;
-        font-size: 50px;
+        margin: 28px 0 0;
+        max-width: 100%;
+        font-size: 30px;
         line-height: 1.24;
         font-weight: 800;
         color: #ffffff;
       ">${escapeHtml(input.title)}</h1>
       <p style="
-        margin: 28px 0 0;
-        max-width: 930px;
-        font-size: 30px;
+        margin: 22px 0 0;
+        max-width: 100%;
+        font-size: 18px;
         line-height: 1.58;
         color: #dbeafe;
       ">${escapeHtml(input.excerpt)}</p>
       <div style="
-        margin-top: 38px;
-        border-radius: 28px;
+        margin-top: 28px;
+        border-radius: 20px;
         background: rgba(15,23,42,0.68);
         border: 1px solid rgba(148,163,184,0.28);
-        padding: 22px 26px;
+        padding: 16px 18px;
         color: #bfdbfe;
-        font-size: 24px;
+        font-size: 15px;
         line-height: 1.45;
       ">อ่านต้นทาง: ${escapeHtml(input.sourceUrl)}</div>
     </section>
@@ -162,7 +162,7 @@ export async function createPantipPreviewSnapshot(sourceUrl: string) {
       "--disable-web-security",
       "--disable-features=Translate,BackForwardCache,AcceptCHFrame",
     ],
-    defaultViewport: VIEWPORT,
+    defaultViewport: MOBILE_VIEWPORT,
     executablePath: await getExecutablePath(),
     headless: true,
   });
@@ -171,7 +171,7 @@ export async function createPantipPreviewSnapshot(sourceUrl: string) {
     const page = await browser.newPage();
 
     await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
     );
     await page.setExtraHTTPHeaders({
       "Accept-Language": "th-TH,th;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -209,6 +209,13 @@ export async function createPantipPreviewSnapshot(sourceUrl: string) {
       const style = document.createElement("style");
       style.setAttribute("data-ai-pantip-preview", "true");
       style.textContent = `
+        html,
+        body {
+          width: 430px !important;
+          max-width: 430px !important;
+          overflow-x: hidden !important;
+          background: #f8fafc !important;
+        }
         iframe,
         [class*="comment"],
         [id*="comment"],
@@ -217,6 +224,14 @@ export async function createPantipPreviewSnapshot(sourceUrl: string) {
         [data-testid*="comment"],
         [data-testid*="Comment"] {
           visibility: hidden !important;
+        }
+        [class*="ads"],
+        [id*="ads"],
+        [class*="Ads"],
+        [id*="Ads"],
+        [class*="banner"],
+        [id*="banner"] {
+          display: none !important;
         }
       `;
       document.head.appendChild(style);
@@ -288,7 +303,7 @@ export async function createPantipPreviewSnapshot(sourceUrl: string) {
         if (targetElement) {
           foundTitleElement = true;
           const rect = targetElement.getBoundingClientRect();
-          captureY = Math.max(0, rect.top + window.scrollY - 96);
+          captureY = Math.max(0, rect.top + window.scrollY - 48);
         }
       }
 
@@ -335,15 +350,9 @@ export async function createPantipPreviewSnapshot(sourceUrl: string) {
     const screenshotBuffer = Buffer.from(
       await page.screenshot({
         type: "jpeg",
-        quality: 78,
+        quality: 82,
         fullPage: false,
         captureBeyondViewport: false,
-        clip: {
-          x: 0,
-          y: needsFallbackCard ? 0 : metadata.captureY,
-          width: SCREENSHOT_WIDTH,
-          height: SCREENSHOT_HEIGHT,
-        },
       }),
     );
 

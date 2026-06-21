@@ -419,3 +419,8 @@ Technical notes:
 ```
 
 If testing screenshot generation locally on Windows fails because Chromium cannot launch, test the feature on Vercel production or set `PUPPETEER_EXECUTABLE_PATH` to a local Chrome/Chromium executable path. This variable is optional and is not required on Vercel when the bundled serverless Chromium works.
+
+### Pantip mobile screenshot behavior
+
+The manual Pantip Source Post flow captures the source preview using a mobile viewport so the image looks closer to reading Pantip on a phone. The app still captures only the top part of the topic, does not scroll into comments, does not store the screenshot in app storage, and keeps the generated fallback card if the real Pantip page does not render clearly in the serverless browser.
+
