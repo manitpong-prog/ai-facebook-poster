@@ -455,3 +455,11 @@ Pantip captions are intentionally short. The caption prompt now treats the extra
 - The feature uses the existing Writing Profile / Writing Style so news posts match the page voice.
 - It does not create images/cards, does not use news images, does not run Auto Pilot, and does not publish without manual approval.
 - The AI may read/translate the available article text to understand the story, but the Facebook output must be a short Thai summary with source credit and the original link.
+
+
+## News Source Post RSS categories update
+- News Source Post now includes more built-in RSS feeds grouped by category.
+- Starter categories include World, Business/Economy, Technology, Science, Health, Entertainment/Culture, Travel, Sport, and Football.
+- The News dashboard source selector groups sources by category so the user can choose a more specific feed before loading stories.
+- Custom RSS URL remains available for sources that are not hardcoded yet.
+- The flow remains manual-only: choose a story, preview the AI caption, edit if needed, and manually publish.

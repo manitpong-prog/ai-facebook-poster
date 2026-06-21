@@ -2,7 +2,11 @@
 
 import { useMemo, useState } from "react";
 
-import type { NewsFeedItem, NewsSource } from "@/lib/news/rss";
+import {
+  NEWS_CATEGORY_LABELS,
+  type NewsFeedItem,
+  type NewsSource,
+} from "@/lib/news/rss";
 
 type NewsItemsResponse = {
   ok: true;
@@ -137,6 +141,16 @@ export function NewsSourceClient({
     ],
     [sources],
   );
+  const groupedSourceOptions = useMemo(() => {
+    const groups = new Map<string, NewsSource[]>();
+
+    for (const source of sourceOptions) {
+      const label = NEWS_CATEGORY_LABELS[source.category] || source.category;
+      groups.set(label, [...(groups.get(label) || []), source]);
+    }
+
+    return Array.from(groups.entries());
+  }, [sourceOptions]);
 
   async function loadItems() {
     setErrorMessage("");
@@ -242,7 +256,7 @@ export function NewsSourceClient({
           <div>
             <h2 className="text-xl font-semibold">เลือกแหล่งข่าว RSS</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-              ระบบจะดึงรายการข่าวล่าสุดมาให้เลือก คุณเลือกข่าวเอง แล้วค่อยให้ AI สรุปเป็นภาษาไทยในสไตล์เพจ
+              ระบบจะดึงรายการข่าวล่าสุดตามหมวดที่เลือก คุณเลือกข่าวเอง แล้วค่อยให้ AI สรุปเป็นภาษาไทยในสไตล์เพจ
             </p>
           </div>
           <div className="rounded-2xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-sm text-slate-300">
@@ -254,7 +268,7 @@ export function NewsSourceClient({
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <label className="block text-sm font-medium text-slate-200" htmlFor="news-source">
-                แหล่งข่าว
+                หมวด / แหล่งข่าว
               </label>
               <select
                 id="news-source"
@@ -263,10 +277,14 @@ export function NewsSourceClient({
                 className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30"
                 disabled={isBusy}
               >
-                {sourceOptions.map((source) => (
-                  <option key={source.id} value={source.id}>
-                    {source.name}
-                  </option>
+                {groupedSourceOptions.map(([categoryLabel, categorySources]) => (
+                  <optgroup key={categoryLabel} label={categoryLabel}>
+                    {categorySources.map((source) => (
+                      <option key={source.id} value={source.id}>
+                        {source.name}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </div>
@@ -362,7 +380,7 @@ export function NewsSourceClient({
             <div>
               <h2 className="text-lg font-semibold">รายการข่าวล่าสุด</h2>
               <p className="mt-1 text-xs text-slate-500">
-                {loadedSource?.name || "แหล่งข่าว"} · เลือกข่าวที่อยากทำโพสต์เอง
+                {loadedSource ? `${NEWS_CATEGORY_LABELS[loadedSource.category]} · ${loadedSource.name}` : "แหล่งข่าว"} · เลือกข่าวที่อยากทำโพสต์เอง
               </p>
             </div>
             <div className="text-xs text-slate-500">พบ {items.length} ข่าว</div>

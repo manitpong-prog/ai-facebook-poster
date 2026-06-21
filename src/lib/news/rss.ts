@@ -1,7 +1,19 @@
+export type NewsCategory =
+  | "world"
+  | "business"
+  | "technology"
+  | "science"
+  | "health"
+  | "entertainment"
+  | "travel"
+  | "sports"
+  | "football"
+  | "custom";
+
 export type NewsSource = {
   id: string;
   name: string;
-  category: "world" | "football" | "custom";
+  category: NewsCategory;
   rssUrl: string;
 };
 
@@ -22,36 +34,145 @@ export type NewsArticleContent = {
   sourceUrl: string;
 };
 
+export const NEWS_CATEGORY_LABELS: Record<NewsCategory, string> = {
+  world: "ต่างประเทศ",
+  business: "ธุรกิจ/เศรษฐกิจ",
+  technology: "เทคโนโลยี",
+  science: "วิทยาศาสตร์",
+  health: "สุขภาพ",
+  entertainment: "บันเทิง/วัฒนธรรม",
+  travel: "ท่องเที่ยว",
+  sports: "กีฬา",
+  football: "ฟุตบอล",
+  custom: "Custom",
+};
+
 export const NEWS_SOURCES: NewsSource[] = [
   {
     id: "bbc-world",
-    name: "BBC World",
+    name: "BBC · World",
     category: "world",
     rssUrl: "https://feeds.bbci.co.uk/news/world/rss.xml",
   },
   {
+    id: "bbc-business",
+    name: "BBC · Business",
+    category: "business",
+    rssUrl: "https://feeds.bbci.co.uk/news/business/rss.xml",
+  },
+  {
+    id: "bbc-technology",
+    name: "BBC · Technology",
+    category: "technology",
+    rssUrl: "https://feeds.bbci.co.uk/news/technology/rss.xml",
+  },
+  {
+    id: "bbc-science",
+    name: "BBC · Science & Environment",
+    category: "science",
+    rssUrl: "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml",
+  },
+  {
+    id: "bbc-health",
+    name: "BBC · Health",
+    category: "health",
+    rssUrl: "https://feeds.bbci.co.uk/news/health/rss.xml",
+  },
+  {
+    id: "bbc-entertainment",
+    name: "BBC · Entertainment & Arts",
+    category: "entertainment",
+    rssUrl: "https://feeds.bbci.co.uk/news/entertainment_and_arts/rss.xml",
+  },
+  {
     id: "bbc-football",
-    name: "BBC Football",
+    name: "BBC Sport · Football",
     category: "football",
     rssUrl: "https://feeds.bbci.co.uk/sport/football/rss.xml",
   },
   {
     id: "guardian-world",
-    name: "The Guardian World",
+    name: "The Guardian · World",
     category: "world",
     rssUrl: "https://www.theguardian.com/world/rss",
   },
   {
+    id: "guardian-business",
+    name: "The Guardian · Business",
+    category: "business",
+    rssUrl: "https://www.theguardian.com/business/rss",
+  },
+  {
+    id: "guardian-technology",
+    name: "The Guardian · Technology",
+    category: "technology",
+    rssUrl: "https://www.theguardian.com/technology/rss",
+  },
+  {
+    id: "guardian-science",
+    name: "The Guardian · Science",
+    category: "science",
+    rssUrl: "https://www.theguardian.com/science/rss",
+  },
+  {
+    id: "guardian-health",
+    name: "The Guardian · Health",
+    category: "health",
+    rssUrl: "https://www.theguardian.com/society/health/rss",
+  },
+  {
+    id: "guardian-culture",
+    name: "The Guardian · Culture",
+    category: "entertainment",
+    rssUrl: "https://www.theguardian.com/culture/rss",
+  },
+  {
+    id: "guardian-travel",
+    name: "The Guardian · Travel",
+    category: "travel",
+    rssUrl: "https://www.theguardian.com/travel/rss",
+  },
+  {
     id: "guardian-football",
-    name: "The Guardian Football",
+    name: "The Guardian · Football",
     category: "football",
     rssUrl: "https://www.theguardian.com/football/rss",
   },
   {
     id: "cnn-world",
-    name: "CNN World",
+    name: "CNN · World",
     category: "world",
     rssUrl: "http://rss.cnn.com/rss/edition_world.rss",
+  },
+  {
+    id: "cnn-business",
+    name: "CNN · Business",
+    category: "business",
+    rssUrl: "http://rss.cnn.com/rss/edition_business.rss",
+  },
+  {
+    id: "cnn-technology",
+    name: "CNN · Technology",
+    category: "technology",
+    rssUrl: "http://rss.cnn.com/rss/edition_technology.rss",
+  },
+  {
+    id: "cnn-entertainment",
+    name: "CNN · Entertainment",
+    category: "entertainment",
+    rssUrl: "http://rss.cnn.com/rss/edition_entertainment.rss",
+  },
+  {
+    id: "cnn-travel",
+    name: "CNN · Travel",
+    category: "travel",
+    rssUrl: "http://rss.cnn.com/rss/edition_travel.rss",
+  },
+  {
+    id: "cnn-sport",
+    name: "CNN · Sport",
+    category: "sports",
+    rssUrl: "http://rss.cnn.com/rss/edition_sport.rss",
   },
 ];
 
