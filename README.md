@@ -447,3 +447,11 @@ Pantip captions are intentionally short. The caption prompt now treats the extra
 - The Pantip preview card is generated from the extracted topic title and topic detail/excerpt only.
 - The card renderer now uses a Thai web font and waits for fonts to load before taking the generated-card screenshot, to avoid missing Thai glyphs in server-rendered images.
 - The renderer does not screenshot the live Pantip page.
+
+
+## News Source Post MVP
+- Added `/dashboard/news` as a manual-only RSS news source workflow.
+- The user selects an RSS source, loads current items, chooses one story, previews the AI-written Thai caption, edits it, then manually posts to Facebook.
+- The feature uses the existing Writing Profile / Writing Style so news posts match the page voice.
+- It does not create images/cards, does not use news images, does not run Auto Pilot, and does not publish without manual approval.
+- The AI may read/translate the available article text to understand the story, but the Facebook output must be a short Thai summary with source credit and the original link.

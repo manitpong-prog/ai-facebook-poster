@@ -30,6 +30,11 @@ const navItems = [
     description: "โพสต์จากลิงก์ Pantip",
   },
   {
+    href: "/dashboard/news",
+    label: "News Post",
+    description: "โพสต์จากข่าว RSS",
+  },
+  {
     href: "/dashboard/autopilot",
     label: "Auto Pilot",
     description: "ตั้งเวลา AI อัตโนมัติ",

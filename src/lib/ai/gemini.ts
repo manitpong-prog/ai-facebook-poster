@@ -344,3 +344,172 @@ export async function generatePantipTeaserWithGemini(
     totalTokens: usageMetadata?.totalTokenCount ?? 0,
   };
 }
+
+export type GenerateNewsSourcePostInput = {
+  sourceName: string;
+  title: string;
+  summary: string;
+  articleText?: string;
+  sourceUrl: string;
+  styleInstructions?: string;
+  writingProfile?: Pick<
+    WritingProfile,
+    | "name"
+    | "tone"
+    | "targetAudience"
+    | "rules"
+    | "favoriteWords"
+    | "bannedWords"
+    | "callToAction"
+    | "samplePosts"
+    | "maxWords"
+  > | null;
+};
+
+function buildNewsFallbackCaption(input: GenerateNewsSourcePostInput) {
+  const title = normalizeThaiWhitespace(input.title);
+  const summarySource = normalizeThaiWhitespace(input.summary || input.articleText || title);
+  const summary = summarySource.length > 260
+    ? `${summarySource.slice(0, 260).trim()}…`
+    : summarySource;
+
+  return `${title}\n\n${summary}\n\nที่มา: ${input.sourceName}\nอ่านต่อ: ${input.sourceUrl}`.trim();
+}
+
+function removeNewsSourceLines(content: string, sourceUrl: string) {
+  return content
+    .split("\n")
+    .filter((line) => {
+      const normalizedLine = normalizeThaiWhitespace(line);
+
+      return !(
+        normalizedLine.startsWith("ที่มา:") ||
+        (normalizedLine.startsWith("อ่านต่อ:") && normalizedLine.includes(sourceUrl))
+      );
+    })
+    .join("\n")
+    .trim();
+}
+
+function isNewsCaptionTooRiskyOrBotLike(content: string) {
+  const botLikePhrases = [
+    "ข่าวต่างประเทศน่าสนใจวันนี้",
+    "อัปเดตข่าวต่างประเทศ",
+    "ประเด็นนี้น่าจับตา",
+    "สถานการณ์ดังกล่าว",
+    "จากกรณีดังกล่าว",
+    "สะท้อนให้เห็น",
+    "สังคมควรตระหนัก",
+    "บทเรียน",
+  ];
+  const bodyWithoutSource = content.split("ที่มา:")[0] || content;
+  const wordLikeCount = bodyWithoutSource.split(/\s+/).filter(Boolean).length;
+
+  return (
+    bodyWithoutSource.length > 900 ||
+    wordLikeCount > 170 ||
+    botLikePhrases.some((phrase) => content.includes(phrase))
+  );
+}
+
+function buildNewsSourcePostPrompt(input: GenerateNewsSourcePostInput) {
+  const profile = input.writingProfile;
+  const maxWords = Math.min(profile?.maxWords ?? 140, 180);
+  const styleInstructions = input.styleInstructions?.trim();
+  const articleText = normalizeThaiWhitespace(input.articleText || "").slice(0, 5500);
+
+  return `คุณคือผู้ช่วยเขียนโพสต์ Facebook Page ภาษาไทยจากข่าวต่างประเทศ
+
+งานของคุณ:
+อ่าน/แปล/ทำความเข้าใจข่าวต้นทางเท่าที่ให้มา แล้วเขียนเป็นโพสต์ภาษาไทยสั้น ๆ เหมือนเล่าให้เพื่อนอ่าน ไม่ใช่แปลทั้งบทความ และไม่ใช่ภาษาข่าวแข็ง ๆ
+
+แหล่งข่าว:
+${input.sourceName}
+
+หัวข้อข่าว:
+${input.title}
+
+สรุปจาก RSS / metadata:
+${input.summary || "ไม่มี"}
+
+เนื้อหาข่าวที่อ่านได้จากต้นทาง:
+${articleText || "อ่านบทความเต็มไม่ได้ ใช้เฉพาะหัวข้อและ summary ที่มี"}
+
+ลิงก์ต้นทาง:
+${input.sourceUrl}
+
+สไตล์ของเพจ:
+- ชื่อสไตล์: ${profile?.name || "สไตล์หลักของฉัน"}
+- โทนภาษา: ${profile?.tone || "เป็นกันเอง อ่านง่าย เหมือนเจ้าของเพจเล่าเอง"}
+- กลุ่มเป้าหมาย: ${profile?.targetAudience || "คนอ่าน Facebook Page ทั่วไป"}
+- กติกาการเขียน: ${profile?.rules || "ย่อหน้าสั้น อ่านง่าย ไม่ขายของแรง ไม่ใช้คำเกินจริง"}
+- คำที่ชอบใช้: ${profile?.favoriteWords || ""}
+- คำที่ไม่อยากให้ใช้: ${profile?.bannedWords || ""}
+- แนวทาง CTA / ตัวอย่าง CTA: ${profile?.callToAction || "ไม่จำเป็นต้องมี CTA ถ้าโพสต์จบดีแล้ว"}
+- ตัวอย่างโพสต์เก่า/แนวทางเพิ่มเติม: ${profile?.samplePosts || "ไม่มี"}
+- สไตล์เฉพาะรอบนี้จากผู้ใช้: ${styleInstructions || "เขียนเหมือนเล่าให้เพื่อนอ่าน สั้น กระชับ ไม่เป็นทางการเกินไป ไม่ต้องเขียนเหมือนข่าวทีวี และใส่มุมเล่า/ความเห็นเบา ๆ ได้เล็กน้อย"}
+
+กติกาสำคัญ:
+1. เขียนเป็นภาษาไทยเท่านั้น
+2. ความยาวไม่เกิน ${maxWords} คำ
+3. เขียน 1-2 ย่อหน้าสั้น ๆ แล้วตามด้วยเครดิตและลิงก์ต้นทาง
+4. ไม่ต้องขึ้นต้นด้วยคำหัวข้อแบบบอท เช่น “ข่าวต่างประเทศน่าสนใจวันนี้”, “อัปเดตฟุตบอลต่างประเทศ”, “ประเด็นนี้น่าจับตา”
+5. ไม่แปลข่าวทั้งบทความ ห้ามคัดลอกข้อความยาวจากต้นทาง
+6. สรุปเฉพาะประเด็นสำคัญเท่าที่ข้อมูลรองรับ ห้ามแต่งข้อมูลเพิ่ม
+7. ใส่มุมเล่าให้เพื่อนอ่านได้ แต่ต้องไม่ฟันธงเกินข่าวต้นทาง
+8. ห้ามใช้รูปแบบ bullet/markdown/code block
+9. ห้ามใช้ภาษาทางการเกินไปหรือภาษารายงาน เช่น “สถานการณ์ดังกล่าว”, “จากกรณีดังกล่าว”, “สะท้อนให้เห็น”
+10. ต้องปิดท้ายด้วยรูปแบบนี้เสมอ:
+ที่มา: ${input.sourceName}
+อ่านต่อ: ${input.sourceUrl}
+
+ตัวอย่างรูปแบบ:
+CNN รายงานว่า [สรุปข่าวแบบภาษาคนอ่านง่าย 1-2 ย่อหน้าสั้น ๆ]
+
+[มุมเล่าให้เพื่อนฟังแบบสั้น ๆ]
+
+ที่มา: ${input.sourceName}
+อ่านต่อ: ${input.sourceUrl}
+
+ส่งออกเป็น caption พร้อมโพสต์บน Facebook เท่านั้น`;
+}
+
+export async function generateNewsSourcePostWithGemini(
+  input: GenerateNewsSourcePostInput,
+): Promise<GenerateFacebookPostResult> {
+  const client = getGeminiClient();
+  const model = getGeminiModel();
+  const prompt = buildNewsSourcePostPrompt(input);
+
+  let response;
+
+  try {
+    response = await client.models.generateContent({
+      model,
+      contents: prompt,
+    });
+  } catch (error) {
+    const message = getReadableGeminiError(error);
+    throw new Error(`Gemini news source post failed with model ${model}: ${message}`);
+  }
+
+  let content = normalizeThaiWhitespace(cleanGeneratedText(response.text ?? ""));
+  const usageMetadata = response.usageMetadata as GeminiUsageMetadata | undefined;
+
+  if (!content || isNewsCaptionTooRiskyOrBotLike(content)) {
+    content = buildNewsFallbackCaption(input);
+  } else {
+    content = removeNewsSourceLines(content, input.sourceUrl);
+    content = `${content}\n\nที่มา: ${input.sourceName}\nอ่านต่อ: ${input.sourceUrl}`.trim();
+    content = content.replace(/ที่มา:\s*\n\s*/g, "ที่มา: ");
+    content = content.replace(/อ่านต่อ:\s*\n\s*/g, "อ่านต่อ: ");
+  }
+
+  return {
+    content,
+    model,
+    inputTokens: usageMetadata?.promptTokenCount ?? 0,
+    outputTokens: usageMetadata?.candidatesTokenCount ?? 0,
+    totalTokens: usageMetadata?.totalTokenCount ?? 0,
+  };
+}
