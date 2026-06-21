@@ -424,3 +424,9 @@ If testing screenshot generation locally on Windows fails because Chromium canno
 
 The manual Pantip Source Post flow captures the source preview using a mobile viewport so the image looks closer to reading Pantip on a phone. The app still captures only the top part of the topic, does not scroll into comments, does not store the screenshot in app storage, and keeps the generated fallback card if the real Pantip page does not render clearly in the serverless browser.
 
+
+### Pantip readable-card fallback and short caption behavior
+
+If the real Pantip mobile screenshot renders as an incomplete page, skeleton, or mostly unreadable content, the app now switches to a generated readable card from the topic title, short excerpt, and source URL. This keeps the Facebook image useful without storing images in the app.
+
+Pantip captions are intentionally short. The caption prompt now treats the extracted short excerpt as the main caption source and avoids long analysis, formal news-style language, and bot-like phrases. If Gemini returns a caption that is too long or too formal, the app falls back to a short caption based on the extracted excerpt plus the original Pantip link.

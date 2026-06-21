@@ -12,6 +12,7 @@ type PantipPreviewResponse = {
   excerpt: string;
   screenshotDataUrl: string;
   screenshotMimeType: string;
+  imageMode: "pantip_screenshot" | "readable_card";
   caption: string;
   warnings: PantipRiskWarning[];
 };
@@ -88,7 +89,7 @@ export function PantipSourceClient({
   const [preview, setPreview] = useState<PantipPreviewResponse | null>(null);
   const [caption, setCaption] = useState("");
   const [styleInstructions, setStyleInstructions] = useState(
-    "เขียนสั้น ๆ เหมือนผมเจอกระทู้นี้แล้วเอามาเล่าเอง ไม่เป็นทางการ ไม่ต้องสรุปยาว ไม่ใช้คำทางการหรือคำเหมือนบอท",
+    "เอาข้อความตัวอย่างสั้น ๆ มาใช้เป็นแคปชั่นหลักได้เลย เขียนสั้นมาก เหมือนผมหยิบกระทู้นี้มาแปะให้คนอ่านต่อ ไม่ต้องวิเคราะห์ ไม่ต้องสรุปยาว ไม่ต้องใช้คำทางการ",
   );
   const [loadingState, setLoadingState] = useState<LoadingState>("idle");
   const [errorMessage, setErrorMessage] = useState("");
@@ -245,7 +246,11 @@ export function PantipSourceClient({
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-lg font-semibold">Preview รูปกระทู้</h2>
-                <p className="mt-1 text-xs text-slate-500">ระบบจะใช้รูปนี้โพสต์ขึ้น Facebook โดยตรง เป็นภาพแนวหน้าจอมือถือ แล้วไม่เก็บรูปไว้ในแอป</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {preview.imageMode === "readable_card"
+                    ? "Pantip render รูปจริงไม่สมบูรณ์ ระบบจึงใช้การ์ดอ่านง่ายจากหัวข้อและข้อความตัวอย่างแทน"
+                    : "ระบบจะใช้รูปนี้โพสต์ขึ้น Facebook โดยตรง เป็นภาพแนวหน้าจอมือถือ แล้วไม่เก็บรูปไว้ในแอป"}
+                </p>
               </div>
               <a
                 href={preview.sourceUrl}
@@ -267,11 +272,11 @@ export function PantipSourceClient({
           <div className="space-y-5">
             <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5">
               <h2 className="text-lg font-semibold">Caption จาก AI</h2>
-              <p className="mt-1 text-xs text-slate-500">แก้ข้อความได้ก่อนกดโพสต์ ระบบจะบังคับใส่ลิงก์ต้นทางเสมอ ถ้ายังดูเป็นบอท ให้ปรับช่อง “สไตล์แคปชั่นรอบนี้” แล้วสร้างตัวอย่างใหม่</p>
+              <p className="mt-1 text-xs text-slate-500">แก้ข้อความได้ก่อนกดโพสต์ ระบบจะพยายามให้ข้อความสั้นใกล้เคียง “ตัวอย่างข้อความสั้น ๆ” และบังคับใส่ลิงก์ต้นทางเสมอ</p>
               <textarea
                 value={caption}
                 onChange={(event) => setCaption(event.target.value)}
-                rows={11}
+                rows={7}
                 className="mt-4 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm leading-6 text-white outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30"
                 disabled={isBusy}
               />

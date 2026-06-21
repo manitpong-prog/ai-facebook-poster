@@ -177,16 +177,52 @@ export type GeneratePantipTeaserInput = {
   > | null;
 };
 
+function normalizeThaiWhitespace(value: string) {
+  return value
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function buildShortPantipCaption(input: GeneratePantipTeaserInput) {
+  const sourceText = normalizeThaiWhitespace(input.excerpt || input.title);
+  const body =
+    sourceText.length > 220 ? `${sourceText.slice(0, 220).trim()}…` : sourceText;
+
+  return `${body}\n\nอ่านต้นทาง: ${input.sourceUrl}`.trim();
+}
+
+function isPantipCaptionTooBotLike(content: string) {
+  const botLikePhrases = [
+    "บทเรียน",
+    "ประเด็นที่น่าสนใจ",
+    "สถานการณ์",
+    "สะท้อนให้เห็น",
+    "สังคมควรตระหนัก",
+    "จากกรณีดังกล่าว",
+    "สิ่งที่น่าสนใจคือ",
+    "มุมมองที่น่าสนใจ",
+  ];
+  const bodyWithoutLink = content.split("อ่านต้นทาง")[0] || content;
+  const wordLikeCount = bodyWithoutLink.split(/\s+/).filter(Boolean).length;
+
+  return (
+    bodyWithoutLink.length > 260 ||
+    wordLikeCount > 55 ||
+    botLikePhrases.some((phrase) => content.includes(phrase))
+  );
+}
+
 function buildPantipTeaserPrompt(input: GeneratePantipTeaserInput) {
   const profile = input.writingProfile;
-  const maxWords = Math.min(profile?.maxWords ?? 70, 90);
+  const maxWords = Math.min(profile?.maxWords ?? 40, 45);
   const styleInstructions = input.styleInstructions?.trim();
 
-  return `คุณคือผู้ช่วยเขียน caption Facebook Page ภาษาไทยสำหรับโพสต์ชวนอ่านกระทู้ Pantip
+  return `คุณคือผู้ช่วยจัด caption Facebook Page ภาษาไทยสำหรับโพสต์ชวนอ่านกระทู้ Pantip
 
 งานของคุณ:
-เขียน caption สั้น ๆ แบบคนจริงเล่าเอง เพื่อชวนคนอ่านไปอ่านกระทู้ต้นทางต่อ โดยใช้ข้อมูลเท่าที่ให้มาเท่านั้น
-ห้ามเขียนเหมือนรายงานข่าว ห้ามเขียนเหมือนบทความวิชาการ และห้ามเขียนเหมือนบอทสรุปข่าว
+เขียน caption สั้นมาก โดยยึด “ข้อความตัวอย่างจากต้นทางแบบสั้น” เป็นแกนหลัก ถ้าข้อความตัวอย่างอ่านรู้เรื่องอยู่แล้ว ให้ใช้ความหมายเดิมให้ใกล้ที่สุด ไม่ต้องวิเคราะห์เพิ่ม
 
 ชื่อกระทู้:
 ${input.title}
@@ -204,22 +240,27 @@ ${input.sourceUrl}
 - กติกาการเขียน: ${profile?.rules || "ย่อหน้าสั้น อ่านง่าย ไม่ขายของแรง ไม่ใช้คำเกินจริง"}
 - คำที่ชอบใช้: ${profile?.favoriteWords || ""}
 - คำที่ไม่อยากให้ใช้: ${profile?.bannedWords || ""}
-- แนวทาง CTA / ตัวอย่าง CTA: ${profile?.callToAction || "ให้ปิดท้ายแบบนุ่ม ๆ และเข้ากับเนื้อหา"}
+- แนวทาง CTA / ตัวอย่าง CTA: ${profile?.callToAction || "ไม่จำเป็นต้องมี CTA ถ้าแคปชั่นสั้นพอแล้ว"}
 - ตัวอย่างโพสต์เก่า/แนวทางเพิ่มเติม: ${profile?.samplePosts || "ไม่มี"}
-- สไตล์เฉพาะรอบนี้จากผู้ใช้: ${styleInstructions || "เขียนสั้น ๆ เหมือนเจ้าของเพจเจอกระทู้แล้วเอามาเล่าเอง ไม่เป็นทางการ ไม่ยาว ไม่บอท"}
+- สไตล์เฉพาะรอบนี้จากผู้ใช้: ${styleInstructions || "เอาข้อความตัวอย่างสั้น ๆ มาใช้เป็นแคปชั่นหลักได้เลย เขียนสั้นมาก เหมือนผมหยิบกระทู้นี้มาแปะให้คนอ่านต่อ ไม่ต้องวิเคราะห์ ไม่ต้องสรุปยาว ไม่ต้องใช้คำทางการ"}
 
 กติกาเฉพาะสำหรับโพสต์จาก Pantip:
 1. เขียนเป็นภาษาไทยเท่านั้น
-2. ความยาวไม่เกิน ${maxWords} คำ และถ้าสั้นกว่านี้ได้ให้สั้นไว้ก่อน
-3. เขียนเป็น 2-3 ย่อหน้าสั้น ๆ อ่านง่ายบนมือถือ
-4. น้ำเสียงเหมือนคนเจอกระทู้น่าสนใจแล้วเอามาเล่าให้เพื่อนฟัง
-5. ห้ามใช้ภาษาทางการหรือภาษารายงาน เช่น “บทเรียน”, “ประเด็นที่น่าสนใจ”, “สถานการณ์”, “สะท้อนให้เห็น”, “สังคมควรตระหนัก”, “จากกรณีดังกล่าว”
-6. ห้ามคัดลอกข้อความยาวจากกระทู้ ให้เขียนเป็นมุมมองสรุป/ชวนอ่านต่อเท่านั้น
-7. ห้ามดึงหรืออ้างถึงคอมเมนต์
-8. ห้ามกล่าวหา ห้ามฟันธง ห้ามขยายดราม่า และห้ามพาดพิงบุคคลจริง
-9. ถ้าประเด็นดูเสี่ยง ให้เขียนเป็นมุมกลาง ๆ และลดความแรงลง
+2. ความยาวไม่เกิน ${maxWords} คำ ยิ่งสั้นยิ่งดี
+3. โครงสร้างที่ต้องการคือ ข้อความสั้น 1 ย่อหน้า แล้วเว้นบรรทัด แล้วตามด้วย “อ่านต้นทาง: <ลิงก์>”
+4. ใช้ข้อความตัวอย่างจากต้นทางแบบสั้นเป็นฐานหลัก ห้ามขยายความเป็นบทความ
+5. ห้ามวิเคราะห์ยาว ห้ามสอน ห้ามสรุปเหมือนข่าว ห้ามแต่งประเด็นเพิ่ม
+6. ห้ามใช้ภาษาทางการหรือภาษารายงาน เช่น “บทเรียน”, “ประเด็นที่น่าสนใจ”, “สถานการณ์”, “สะท้อนให้เห็น”, “สังคมควรตระหนัก”, “จากกรณีดังกล่าว”, “สิ่งที่น่าสนใจคือ”
+7. ห้ามคัดข้อความยาวจากกระทู้ ให้ใช้แค่ความหมายสั้น ๆ จาก title/excerpt ที่ให้มาเท่านั้น
+8. ห้ามดึงหรืออ้างถึงคอมเมนต์
+9. ห้ามกล่าวหา ห้ามฟันธง ห้ามขยายดราม่า และห้ามพาดพิงบุคคลจริง
 10. ต้องมีบรรทัด “อ่านต้นทาง:” ตามด้วยลิงก์ต้นทางเต็ม ๆ เสมอ
-11. ห้ามใส่ markdown, bullet ยาว ๆ หรือ code block
+11. ห้ามใส่ markdown, bullet, emoji เยอะ หรือ code block
+
+ตัวอย่างรูปแบบที่ต้องการ:
+ถ้าเราหาเงินค่าสินสอดไม่ครบถึงวันที่จะแต่ง แล้วแฟนไม่ยอมแต่ง ทั้ง ๆ ที่เราพยายามสุดตัวที่สุดแล้ว จะเอายังไง
+
+อ่านต้นทาง: ${input.sourceUrl}
 
 ส่งออกเป็น caption พร้อมโพสต์บน Facebook เท่านั้น`;
 }
@@ -243,15 +284,21 @@ export async function generatePantipTeaserWithGemini(
     throw new Error(`Gemini Pantip teaser failed with model ${model}: ${message}`);
   }
 
-  let content = cleanGeneratedText(response.text ?? "");
+  let content = normalizeThaiWhitespace(cleanGeneratedText(response.text ?? ""));
 
   if (!content) {
     throw new Error("Gemini returned empty Pantip teaser");
   }
 
-  if (!content.includes(input.sourceUrl)) {
-    content = `${content}\n\nอ่านต้นทาง:\n${input.sourceUrl}`.trim();
+  if (isPantipCaptionTooBotLike(content)) {
+    content = buildShortPantipCaption(input);
   }
+
+  if (!content.includes(input.sourceUrl)) {
+    content = `${content}\n\nอ่านต้นทาง: ${input.sourceUrl}`.trim();
+  }
+
+  content = content.replace(/อ่านต้นทาง:\s*\n\s*/g, "อ่านต้นทาง: ");
 
   const usageMetadata = response.usageMetadata as GeminiUsageMetadata | undefined;
 

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import chromium from "@sparticuz/chromium";
-import puppeteer from "puppeteer-core";
+import puppeteer, { type Page } from "puppeteer-core";
 
 import { buildImageDataUrl } from "@/lib/pantip/image-data";
 import { detectPantipRiskWarnings } from "@/lib/pantip/risk";
@@ -13,6 +13,7 @@ export type PantipPreviewSnapshot = {
   excerpt: string;
   screenshotDataUrl: string;
   screenshotMimeType: "image/jpeg";
+  imageMode: "pantip_screenshot" | "readable_card";
   warnings: ReturnType<typeof detectPantipRiskWarnings>;
 };
 
@@ -98,53 +99,74 @@ function buildFallbackCardHtml(input: {
       box-sizing: border-box;
       width: 100%;
       min-height: 932px;
-      padding: 28px;
-      background: linear-gradient(135deg, #2c2260 0%, #1d1740 48%, #101827 100%);
+      padding: 20px;
+      background: #0f172a;
       color: #ffffff;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     ">
       <div style="
-        display: inline-flex;
-        align-items: center;
-        gap: 10px;
-        border-radius: 999px;
-        background: rgba(255,255,255,0.12);
-        border: 1px solid rgba(255,255,255,0.18);
-        padding: 8px 14px;
-        color: #fde68a;
-        font-size: 16px;
-        font-weight: 700;
-        letter-spacing: 0.01em;
-      ">Pantip topic</div>
-      <h1 style="
-        margin: 28px 0 0;
-        max-width: 100%;
-        font-size: 30px;
-        line-height: 1.24;
-        font-weight: 800;
-        color: #ffffff;
-      ">${escapeHtml(input.title)}</h1>
-      <p style="
-        margin: 22px 0 0;
-        max-width: 100%;
-        font-size: 18px;
-        line-height: 1.58;
-        color: #dbeafe;
-      ">${escapeHtml(input.excerpt)}</p>
-      <div style="
-        margin-top: 28px;
-        border-radius: 20px;
-        background: rgba(15,23,42,0.68);
-        border: 1px solid rgba(148,163,184,0.28);
-        padding: 16px 18px;
-        color: #bfdbfe;
-        font-size: 15px;
-        line-height: 1.45;
-      ">อ่านต้นทาง: ${escapeHtml(input.sourceUrl)}</div>
+        overflow: hidden;
+        min-height: 892px;
+        border-radius: 34px;
+        border: 1px solid rgba(148,163,184,0.36);
+        background: #1f2f5f;
+        box-shadow: 0 22px 70px rgba(0,0,0,0.36);
+      ">
+        <div style="
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 14px 18px;
+          background: #2f245f;
+          color: #fde68a;
+          font-size: 15px;
+          font-weight: 800;
+        ">
+          <span>Pantip</span>
+          <span style="font-size: 12px; color: #d8b4fe; font-weight: 600;">กระทู้น่าอ่าน</span>
+        </div>
+        <div style="padding: 26px 22px 22px;">
+          <div style="
+            display: inline-flex;
+            border-radius: 999px;
+            background: rgba(253,224,71,0.16);
+            border: 1px solid rgba(253,224,71,0.28);
+            padding: 7px 12px;
+            color: #fde047;
+            font-size: 13px;
+            font-weight: 750;
+          ">จากลิงก์ต้นทาง</div>
+          <h1 style="
+            margin: 24px 0 0;
+            font-size: 28px;
+            line-height: 1.28;
+            font-weight: 850;
+            color: #ffffff;
+            letter-spacing: -0.01em;
+          ">${escapeHtml(input.title)}</h1>
+          <p style="
+            margin: 22px 0 0;
+            font-size: 20px;
+            line-height: 1.62;
+            color: #dbeafe;
+            font-weight: 520;
+          ">${escapeHtml(input.excerpt)}</p>
+          <div style="
+            margin-top: 30px;
+            border-radius: 22px;
+            background: rgba(15,23,42,0.68);
+            border: 1px solid rgba(191,219,254,0.28);
+            padding: 16px 18px;
+            color: #bfdbfe;
+            font-size: 14px;
+            line-height: 1.5;
+            word-break: break-word;
+          ">อ่านต้นทาง: ${escapeHtml(input.sourceUrl)}</div>
+        </div>
+      </div>
     </section>
   `;
 }
-
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -152,6 +174,67 @@ function escapeHtml(value: string) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+
+type VisibleViewportProbe = {
+  titleVisible: boolean;
+  thaiTextLength: number;
+  digitCount: number;
+  textLength: number;
+  visibleTextPreview: string;
+};
+
+async function readVisibleViewportProbe(page: Page, title: string) {
+  return (await page.evaluate((titleValue) => {
+    function normalize(value: string) {
+      return value.replace(/\s+/g, " ").trim();
+    }
+
+    function isVisibleElement(element: Element) {
+      const rect = element.getBoundingClientRect();
+
+      if (rect.width < 2 || rect.height < 2) {
+        return false;
+      }
+
+      if (rect.bottom < 0 || rect.top > window.innerHeight) {
+        return false;
+      }
+
+      const style = window.getComputedStyle(element);
+
+      return (
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        Number(style.opacity || "1") > 0.05
+      );
+    }
+
+    const visibleText = normalize(
+      Array.from(document.querySelectorAll("body *"))
+        .filter(isVisibleElement)
+        .map((element) => element.textContent || "")
+        .join(" "),
+    );
+    const titleProbe = normalize(titleValue).slice(0, 18);
+    const thaiTextLength = (visibleText.match(/[ก-๙]/g) || []).length;
+    const digitCount = (visibleText.match(/[0-9]/g) || []).length;
+
+    return {
+      titleVisible: titleProbe.length < 8 || visibleText.includes(titleProbe),
+      thaiTextLength,
+      digitCount,
+      textLength: visibleText.length,
+      visibleTextPreview: visibleText.slice(0, 180),
+    } satisfies VisibleViewportProbe;
+  }, title)) as VisibleViewportProbe;
+}
+
+function shouldUseReadableCard(probe: VisibleViewportProbe) {
+  const digitRatio = probe.textLength > 0 ? probe.digitCount / probe.textLength : 0;
+
+  return !probe.titleVisible || probe.thaiTextLength < 45 || digitRatio > 0.28;
 }
 
 export async function createPantipPreviewSnapshot(sourceUrl: string) {
@@ -186,7 +269,9 @@ export async function createPantipPreviewSnapshot(sourceUrl: string) {
 
       if (
         BLOCKED_RESOURCE_TYPES.has(resourceType) ||
-        BLOCKED_URL_PARTS.some((blockedPart) => requestUrl.includes(blockedPart))
+        BLOCKED_URL_PARTS.some((blockedPart) =>
+          requestUrl.includes(blockedPart),
+        )
       ) {
         void request.abort();
         return;
@@ -200,10 +285,11 @@ export async function createPantipPreviewSnapshot(sourceUrl: string) {
       timeout: 22_000,
     });
     await page.waitForSelector("body", { timeout: 8_000 });
-    await page.waitForFunction(
-      () => document.body.innerText.trim().length > 60,
-      { timeout: 8_000 },
-    ).catch(() => undefined);
+    await page
+      .waitForFunction(() => document.body.innerText.trim().length > 60, {
+        timeout: 8_000,
+      })
+      .catch(() => undefined);
 
     await page.evaluate(() => {
       const style = document.createElement("style");
@@ -279,14 +365,15 @@ export async function createPantipPreviewSnapshot(sourceUrl: string) {
       }
 
       const title =
-        readMeta("meta[property='og:title']") ||
-        readSelector(["h1", "title"]);
+        readMeta("meta[property='og:title']") || readSelector(["h1", "title"]);
       const excerpt =
         readMeta("meta[property='og:description']") ||
         readMeta("meta[name='description']") ||
         readSelector(["article", "main", "body"]);
       const cleanTitle = normalize(
-        title.replace(/\s*-\s*Pantip\s*$/i, "").replace(/\s*\|\s*Pantip\s*$/i, ""),
+        title
+          .replace(/\s*-\s*Pantip\s*$/i, "")
+          .replace(/\s*\|\s*Pantip\s*$/i, ""),
       );
       const titleProbe = cleanTitle.slice(0, Math.min(cleanTitle.length, 30));
       let captureY = 0;
@@ -307,7 +394,9 @@ export async function createPantipPreviewSnapshot(sourceUrl: string) {
         }
       }
 
-      const renderedTextLength = normalize(document.body.innerText || "").length;
+      const renderedTextLength = normalize(
+        document.body.innerText || "",
+      ).length;
 
       return {
         title: cleanTitle || title,
@@ -319,7 +408,10 @@ export async function createPantipPreviewSnapshot(sourceUrl: string) {
       };
     })) as PantipPageMetadata;
 
-    const title = truncateText(stripPantipSuffix(metadata.title) || "กระทู้ Pantip", 140);
+    const title = truncateText(
+      stripPantipSuffix(metadata.title) || "กระทู้ Pantip",
+      140,
+    );
     const excerpt = truncateText(metadata.excerpt || title, 360);
     const warnings = detectPantipRiskWarnings(`${title}\n${excerpt}`);
     const needsFallbackCard =
@@ -327,7 +419,10 @@ export async function createPantipPreviewSnapshot(sourceUrl: string) {
       !metadata.foundTitleElement ||
       metadata.renderedTextLength < MIN_RENDERED_TEXT_LENGTH;
 
+    let imageMode: PantipPreviewSnapshot["imageMode"] = "pantip_screenshot";
+
     if (needsFallbackCard) {
+      imageMode = "readable_card";
       await page.evaluate(
         ({ html }) => {
           document.body.innerHTML = html;
@@ -343,14 +438,48 @@ export async function createPantipPreviewSnapshot(sourceUrl: string) {
         },
       );
     } else {
-      await page.evaluate((captureY) => window.scrollTo(0, captureY), metadata.captureY);
-      await new Promise((resolve) => setTimeout(resolve, 700));
+      await page.evaluate(
+        (captureY) => window.scrollTo(0, captureY),
+        metadata.captureY,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 900));
+
+      const visibleProbe = await readVisibleViewportProbe(page, title);
+
+      if (shouldUseReadableCard(visibleProbe)) {
+        console.info(
+          "[pantip-preview] switching to readable card because rendered screenshot looks incomplete",
+          {
+            titleVisible: visibleProbe.titleVisible,
+            thaiTextLength: visibleProbe.thaiTextLength,
+            digitCount: visibleProbe.digitCount,
+            textLength: visibleProbe.textLength,
+            visibleTextPreview: visibleProbe.visibleTextPreview,
+          },
+        );
+        imageMode = "readable_card";
+        await page.evaluate(
+          ({ html }) => {
+            document.body.innerHTML = html;
+            document.body.style.margin = "0";
+            document.documentElement.style.background = "#101827";
+            window.scrollTo(0, 0);
+          },
+          {
+            html: buildFallbackCardHtml({
+              title,
+              excerpt,
+              sourceUrl,
+            }),
+          },
+        );
+      }
     }
 
     const screenshotBuffer = Buffer.from(
       await page.screenshot({
         type: "jpeg",
-        quality: 82,
+        quality: 84,
         fullPage: false,
         captureBeyondViewport: false,
       }),
@@ -362,6 +491,7 @@ export async function createPantipPreviewSnapshot(sourceUrl: string) {
       excerpt,
       screenshotDataUrl: buildImageDataUrl(screenshotBuffer, "image/jpeg"),
       screenshotMimeType: "image/jpeg" as const,
+      imageMode,
       warnings,
     } satisfies PantipPreviewSnapshot;
   } finally {

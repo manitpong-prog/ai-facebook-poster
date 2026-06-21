@@ -113,6 +113,7 @@ export async function POST(request: Request) {
       excerpt: snapshot.excerpt,
       screenshotDataUrl: snapshot.screenshotDataUrl,
       screenshotMimeType: snapshot.screenshotMimeType,
+      imageMode: snapshot.imageMode,
       caption: captionResult.content,
       warnings: snapshot.warnings,
     });
