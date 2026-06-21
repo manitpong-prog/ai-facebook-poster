@@ -18,11 +18,15 @@ export type PantipPreviewSnapshot = {
 
 const VIEWPORT = {
   width: 1080,
-  height: 720,
+  height: 760,
   deviceScaleFactor: 1,
 };
 
-const BLOCKED_RESOURCE_TYPES = new Set(["image", "media", "font"]);
+const SCREENSHOT_WIDTH = 1080;
+const SCREENSHOT_HEIGHT = 720;
+const MIN_RENDERED_TEXT_LENGTH = 80;
+
+const BLOCKED_RESOURCE_TYPES = new Set(["media", "font"]);
 const BLOCKED_URL_PARTS = [
   "doubleclick.net",
   "googlesyndication.com",
@@ -68,6 +72,88 @@ function truncateText(value: string, maxLength: number) {
   return `${normalized.slice(0, maxLength).trim()}…`;
 }
 
+function stripPantipSuffix(value: string) {
+  return normalizeText(value)
+    .replace(/\s*-\s*Pantip\s*$/i, "")
+    .replace(/\s*\|\s*Pantip\s*$/i, "")
+    .trim();
+}
+
+type PantipPageMetadata = {
+  title: string;
+  excerpt: string;
+  captureY: number;
+  renderedTextLength: number;
+  foundTitleElement: boolean;
+  needsFallbackCard: boolean;
+};
+
+function buildFallbackCardHtml(input: {
+  title: string;
+  excerpt: string;
+  sourceUrl: string;
+}) {
+  return `
+    <section id="ai-pantip-source-card" style="
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 700px;
+      padding: 48px;
+      background: linear-gradient(135deg, #2c2260 0%, #1d1740 48%, #101827 100%);
+      color: #ffffff;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    ">
+      <div style="
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.12);
+        border: 1px solid rgba(255,255,255,0.18);
+        padding: 10px 18px;
+        color: #fde68a;
+        font-size: 24px;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+      ">Pantip topic</div>
+      <h1 style="
+        margin: 32px 0 0;
+        max-width: 920px;
+        font-size: 50px;
+        line-height: 1.24;
+        font-weight: 800;
+        color: #ffffff;
+      ">${escapeHtml(input.title)}</h1>
+      <p style="
+        margin: 28px 0 0;
+        max-width: 930px;
+        font-size: 30px;
+        line-height: 1.58;
+        color: #dbeafe;
+      ">${escapeHtml(input.excerpt)}</p>
+      <div style="
+        margin-top: 38px;
+        border-radius: 28px;
+        background: rgba(15,23,42,0.68);
+        border: 1px solid rgba(148,163,184,0.28);
+        padding: 22px 26px;
+        color: #bfdbfe;
+        font-size: 24px;
+        line-height: 1.45;
+      ">อ่านต้นทาง: ${escapeHtml(input.sourceUrl)}</div>
+    </section>
+  `;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 export async function createPantipPreviewSnapshot(sourceUrl: string) {
   const browser = await puppeteer.launch({
     args: [
@@ -90,8 +176,8 @@ export async function createPantipPreviewSnapshot(sourceUrl: string) {
     await page.setExtraHTTPHeaders({
       "Accept-Language": "th-TH,th;q=0.9,en-US;q=0.8,en;q=0.7",
     });
-    page.setDefaultNavigationTimeout(18_000);
-    page.setDefaultTimeout(10_000);
+    page.setDefaultNavigationTimeout(22_000);
+    page.setDefaultTimeout(12_000);
 
     await page.setRequestInterception(true);
     page.on("request", (request) => {
@@ -111,42 +197,45 @@ export async function createPantipPreviewSnapshot(sourceUrl: string) {
 
     await page.goto(sourceUrl, {
       waitUntil: "domcontentloaded",
-      timeout: 18_000,
+      timeout: 22_000,
     });
     await page.waitForSelector("body", { timeout: 8_000 });
+    await page.waitForFunction(
+      () => document.body.innerText.trim().length > 60,
+      { timeout: 8_000 },
+    ).catch(() => undefined);
 
     await page.evaluate(() => {
-      const selectorsToHide = [
-        "iframe",
-        "[class*='comment']",
-        "[id*='comment']",
-        ".pt-list-item__title ~ * [class*='comment']",
-      ];
-
-      for (const selector of selectorsToHide) {
-        document.querySelectorAll(selector).forEach((element) => {
-          if (element instanceof HTMLElement) {
-            element.style.visibility = "hidden";
-          }
-        });
-      }
+      const style = document.createElement("style");
+      style.setAttribute("data-ai-pantip-preview", "true");
+      style.textContent = `
+        iframe,
+        [class*="comment"],
+        [id*="comment"],
+        [class*="Comment"],
+        [id*="Comment"],
+        [data-testid*="comment"],
+        [data-testid*="Comment"] {
+          visibility: hidden !important;
+        }
+      `;
+      document.head.appendChild(style);
     });
 
-    await page.evaluate(() => window.scrollTo(0, 0));
+    const metadata = (await page.evaluate(() => {
+      function normalize(value: string) {
+        return value.replace(/\s+/g, " ").trim();
+      }
 
-    const metadata = await page.evaluate(() => {
-      const titleSelectors = [
-        "h1",
-        "meta[property='og:title']",
-        "title",
-      ];
-      const descriptionSelectors = [
-        "meta[property='og:description']",
-        "meta[name='description']",
-        "article",
-        "main",
-        "body",
-      ];
+      function readMeta(selector: string) {
+        const element = document.querySelector(selector);
+
+        if (element instanceof HTMLMetaElement) {
+          return element.content?.trim() || "";
+        }
+
+        return "";
+      }
 
       function readSelector(selectors: string[]) {
         for (const selector of selectors) {
@@ -157,14 +246,14 @@ export async function createPantipPreviewSnapshot(sourceUrl: string) {
           }
 
           if (element instanceof HTMLMetaElement) {
-            const content = element.content?.trim();
+            const content = normalize(element.content || "");
 
             if (content) {
               return content;
             }
           }
 
-          const text = element.textContent?.trim();
+          const text = normalize(element.textContent || "");
 
           if (text) {
             return text;
@@ -174,30 +263,89 @@ export async function createPantipPreviewSnapshot(sourceUrl: string) {
         return "";
       }
 
+      const title =
+        readMeta("meta[property='og:title']") ||
+        readSelector(["h1", "title"]);
+      const excerpt =
+        readMeta("meta[property='og:description']") ||
+        readMeta("meta[name='description']") ||
+        readSelector(["article", "main", "body"]);
+      const cleanTitle = normalize(
+        title.replace(/\s*-\s*Pantip\s*$/i, "").replace(/\s*\|\s*Pantip\s*$/i, ""),
+      );
+      const titleProbe = cleanTitle.slice(0, Math.min(cleanTitle.length, 30));
+      let captureY = 0;
+      let foundTitleElement = false;
+
+      if (titleProbe.length >= 10) {
+        const elements = Array.from(
+          document.querySelectorAll("h1,h2,h3,article,main,section,div,span"),
+        );
+        const targetElement = elements.find((element) =>
+          normalize(element.textContent || "").includes(titleProbe),
+        );
+
+        if (targetElement) {
+          foundTitleElement = true;
+          const rect = targetElement.getBoundingClientRect();
+          captureY = Math.max(0, rect.top + window.scrollY - 96);
+        }
+      }
+
+      const renderedTextLength = normalize(document.body.innerText || "").length;
+
       return {
-        title: readSelector(titleSelectors),
-        excerpt: readSelector(descriptionSelectors),
+        title: cleanTitle || title,
+        excerpt,
+        captureY,
+        renderedTextLength,
+        foundTitleElement,
+        needsFallbackCard: renderedTextLength < 160 || !foundTitleElement,
       };
-    });
+    })) as PantipPageMetadata;
+
+    const title = truncateText(stripPantipSuffix(metadata.title) || "กระทู้ Pantip", 140);
+    const excerpt = truncateText(metadata.excerpt || title, 360);
+    const warnings = detectPantipRiskWarnings(`${title}\n${excerpt}`);
+    const needsFallbackCard =
+      metadata.needsFallbackCard ||
+      !metadata.foundTitleElement ||
+      metadata.renderedTextLength < MIN_RENDERED_TEXT_LENGTH;
+
+    if (needsFallbackCard) {
+      await page.evaluate(
+        ({ html }) => {
+          document.body.innerHTML = html;
+          document.body.style.margin = "0";
+          document.documentElement.style.background = "#101827";
+        },
+        {
+          html: buildFallbackCardHtml({
+            title,
+            excerpt,
+            sourceUrl,
+          }),
+        },
+      );
+    } else {
+      await page.evaluate((captureY) => window.scrollTo(0, captureY), metadata.captureY);
+      await new Promise((resolve) => setTimeout(resolve, 700));
+    }
 
     const screenshotBuffer = Buffer.from(
       await page.screenshot({
         type: "jpeg",
-        quality: 70,
+        quality: 78,
         fullPage: false,
         captureBeyondViewport: false,
         clip: {
           x: 0,
-          y: 0,
-          width: VIEWPORT.width,
-          height: 620,
+          y: needsFallbackCard ? 0 : metadata.captureY,
+          width: SCREENSHOT_WIDTH,
+          height: SCREENSHOT_HEIGHT,
         },
       }),
     );
-
-    const title = truncateText(metadata.title || "กระทู้ Pantip", 140);
-    const excerpt = truncateText(metadata.excerpt || title, 360);
-    const warnings = detectPantipRiskWarnings(`${title}\n${excerpt}`);
 
     return {
       sourceUrl,

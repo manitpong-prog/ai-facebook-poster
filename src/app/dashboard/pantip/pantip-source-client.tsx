@@ -87,6 +87,9 @@ export function PantipSourceClient({
   const [sourceUrl, setSourceUrl] = useState("");
   const [preview, setPreview] = useState<PantipPreviewResponse | null>(null);
   const [caption, setCaption] = useState("");
+  const [styleInstructions, setStyleInstructions] = useState(
+    "เขียนสั้น ๆ เหมือนผมเจอกระทู้นี้แล้วเอามาเล่าเอง ไม่เป็นทางการ ไม่ต้องสรุปยาว ไม่ใช้คำทางการหรือคำเหมือนบอท",
+  );
   const [loadingState, setLoadingState] = useState<LoadingState>("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const [successResult, setSuccessResult] = useState<PublishSuccessResponse | null>(
@@ -108,7 +111,7 @@ export function PantipSourceClient({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ sourceUrl }),
+        body: JSON.stringify({ sourceUrl, styleInstructions }),
       });
       const payload = await readApiResponse<PantipPreviewResponse>(result);
 
@@ -181,6 +184,22 @@ export function PantipSourceClient({
             className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30"
             disabled={isBusy}
           />
+          <div className="space-y-2 rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+            <label className="block text-sm font-medium text-slate-200" htmlFor="pantip-style">
+              สไตล์แคปชั่นรอบนี้
+            </label>
+            <textarea
+              id="pantip-style"
+              value={styleInstructions}
+              onChange={(event) => setStyleInstructions(event.target.value)}
+              rows={3}
+              className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm leading-6 text-white outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30"
+              disabled={isBusy}
+            />
+            <p className="text-xs leading-5 text-slate-500">
+              ระบบยังใช้ Writing Style หลักของเพจด้วย ช่องนี้ใช้ปรับเฉพาะโพสต์ Pantip รอบนี้ เช่น อยากให้สั้นลง เหมือนเราเขียนเอง หรือไม่เป็นทางการ
+            </p>
+          </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <button
               type="button"
@@ -248,7 +267,7 @@ export function PantipSourceClient({
           <div className="space-y-5">
             <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5">
               <h2 className="text-lg font-semibold">Caption จาก AI</h2>
-              <p className="mt-1 text-xs text-slate-500">แก้ข้อความได้ก่อนกดโพสต์ ระบบจะบังคับใส่ลิงก์ต้นทางเสมอ</p>
+              <p className="mt-1 text-xs text-slate-500">แก้ข้อความได้ก่อนกดโพสต์ ระบบจะบังคับใส่ลิงก์ต้นทางเสมอ ถ้ายังดูเป็นบอท ให้ปรับช่อง “สไตล์แคปชั่นรอบนี้” แล้วสร้างตัวอย่างใหม่</p>
               <textarea
                 value={caption}
                 onChange={(event) => setCaption(event.target.value)}

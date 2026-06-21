@@ -162,6 +162,7 @@ export type GeneratePantipTeaserInput = {
   title: string;
   excerpt: string;
   sourceUrl: string;
+  styleInstructions?: string;
   writingProfile?: Pick<
     WritingProfile,
     | "name"
@@ -178,12 +179,14 @@ export type GeneratePantipTeaserInput = {
 
 function buildPantipTeaserPrompt(input: GeneratePantipTeaserInput) {
   const profile = input.writingProfile;
-  const maxWords = Math.min(profile?.maxWords ?? 120, 160);
+  const maxWords = Math.min(profile?.maxWords ?? 70, 90);
+  const styleInstructions = input.styleInstructions?.trim();
 
   return `คุณคือผู้ช่วยเขียน caption Facebook Page ภาษาไทยสำหรับโพสต์ชวนอ่านกระทู้ Pantip
 
 งานของคุณ:
-เขียน caption สั้น ๆ เพื่อชวนคนอ่านไปอ่านกระทู้ต้นทางต่อ โดยใช้ข้อมูลเท่าที่ให้มาเท่านั้น
+เขียน caption สั้น ๆ แบบคนจริงเล่าเอง เพื่อชวนคนอ่านไปอ่านกระทู้ต้นทางต่อ โดยใช้ข้อมูลเท่าที่ให้มาเท่านั้น
+ห้ามเขียนเหมือนรายงานข่าว ห้ามเขียนเหมือนบทความวิชาการ และห้ามเขียนเหมือนบอทสรุปข่าว
 
 ชื่อกระทู้:
 ${input.title}
@@ -203,17 +206,20 @@ ${input.sourceUrl}
 - คำที่ไม่อยากให้ใช้: ${profile?.bannedWords || ""}
 - แนวทาง CTA / ตัวอย่าง CTA: ${profile?.callToAction || "ให้ปิดท้ายแบบนุ่ม ๆ และเข้ากับเนื้อหา"}
 - ตัวอย่างโพสต์เก่า/แนวทางเพิ่มเติม: ${profile?.samplePosts || "ไม่มี"}
+- สไตล์เฉพาะรอบนี้จากผู้ใช้: ${styleInstructions || "เขียนสั้น ๆ เหมือนเจ้าของเพจเจอกระทู้แล้วเอามาเล่าเอง ไม่เป็นทางการ ไม่ยาว ไม่บอท"}
 
 กติกาเฉพาะสำหรับโพสต์จาก Pantip:
 1. เขียนเป็นภาษาไทยเท่านั้น
-2. ความยาวไม่เกิน ${maxWords} คำ
-3. เขียนเป็น 2-4 ย่อหน้าสั้น ๆ อ่านง่ายบนมือถือ
-4. ห้ามคัดลอกข้อความยาวจากกระทู้ ให้เขียนเป็นมุมมองสรุป/ชวนอ่านต่อเท่านั้น
-5. ห้ามดึงหรืออ้างถึงคอมเมนต์
-6. ห้ามกล่าวหา ห้ามฟันธง ห้ามขยายดราม่า และห้ามพาดพิงบุคคลจริง
-7. ถ้าประเด็นดูเสี่ยง ให้เขียนเป็นมุมกลาง ๆ เช่น “เป็นประเด็นที่ชวนคิด”
-8. ต้องมีบรรทัด “อ่านกระทู้ต้นทาง:” ตามด้วยลิงก์ต้นทางเต็ม ๆ เสมอ
-9. ห้ามใส่ markdown, bullet ยาว ๆ หรือ code block
+2. ความยาวไม่เกิน ${maxWords} คำ และถ้าสั้นกว่านี้ได้ให้สั้นไว้ก่อน
+3. เขียนเป็น 2-3 ย่อหน้าสั้น ๆ อ่านง่ายบนมือถือ
+4. น้ำเสียงเหมือนคนเจอกระทู้น่าสนใจแล้วเอามาเล่าให้เพื่อนฟัง
+5. ห้ามใช้ภาษาทางการหรือภาษารายงาน เช่น “บทเรียน”, “ประเด็นที่น่าสนใจ”, “สถานการณ์”, “สะท้อนให้เห็น”, “สังคมควรตระหนัก”, “จากกรณีดังกล่าว”
+6. ห้ามคัดลอกข้อความยาวจากกระทู้ ให้เขียนเป็นมุมมองสรุป/ชวนอ่านต่อเท่านั้น
+7. ห้ามดึงหรืออ้างถึงคอมเมนต์
+8. ห้ามกล่าวหา ห้ามฟันธง ห้ามขยายดราม่า และห้ามพาดพิงบุคคลจริง
+9. ถ้าประเด็นดูเสี่ยง ให้เขียนเป็นมุมกลาง ๆ และลดความแรงลง
+10. ต้องมีบรรทัด “อ่านต้นทาง:” ตามด้วยลิงก์ต้นทางเต็ม ๆ เสมอ
+11. ห้ามใส่ markdown, bullet ยาว ๆ หรือ code block
 
 ส่งออกเป็น caption พร้อมโพสต์บน Facebook เท่านั้น`;
 }
@@ -244,7 +250,7 @@ export async function generatePantipTeaserWithGemini(
   }
 
   if (!content.includes(input.sourceUrl)) {
-    content = `${content}\n\nอ่านกระทู้ต้นทาง:\n${input.sourceUrl}`.trim();
+    content = `${content}\n\nอ่านต้นทาง:\n${input.sourceUrl}`.trim();
   }
 
   const usageMetadata = response.usageMetadata as GeminiUsageMetadata | undefined;

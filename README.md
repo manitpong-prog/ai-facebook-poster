@@ -390,7 +390,7 @@ Workflow:
 1. Paste one Pantip topic URL manually, for example https://pantip.com/topic/12345678
 2. Click Create Preview
 3. The server creates a temporary screenshot of only the top part of the thread
-4. Gemini writes a short Thai teaser caption that links back to the original thread
+4. Gemini writes a short Thai teaser caption that links back to the original thread, using the main Writing Style plus the optional Pantip-specific style note on the page
 5. Review and edit the caption manually
 6. Click Post to Facebook Page
 7. The image is uploaded directly to Facebook and is not saved permanently by this app
@@ -414,6 +414,7 @@ Technical notes:
 - Uses the existing Facebook Page token/config from /dashboard/facebook
 - Uses the existing GEMINI_API_KEY/GEMINI_MODEL config
 - Uses puppeteer-core + @sparticuz/chromium for the temporary server-side screenshot
+- If Pantip does not render readable topic content in the headless browser, the app falls back to a generated source card using the topic title/excerpt so the Facebook image is not blank
 - No database migration is required
 ```
 

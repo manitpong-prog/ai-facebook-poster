@@ -18,6 +18,7 @@ export const maxDuration = 60;
 
 type PreviewRequestBody = {
   sourceUrl?: unknown;
+  styleInstructions?: unknown;
 };
 
 function getReadableError(error: unknown) {
@@ -64,6 +65,10 @@ export async function POST(request: Request) {
 
   const body = (await request.json().catch(() => null)) as PreviewRequestBody | null;
   const sourceUrlValue = typeof body?.sourceUrl === "string" ? body.sourceUrl : "";
+  const styleInstructions =
+    typeof body?.styleInstructions === "string"
+      ? body.styleInstructions.trim().slice(0, 800)
+      : "";
   const normalizedUrl = normalizePantipTopicUrl(sourceUrlValue);
 
   if (!normalizedUrl.ok) {
@@ -93,6 +98,7 @@ export async function POST(request: Request) {
       title: snapshot.title,
       excerpt: snapshot.excerpt,
       sourceUrl: snapshot.sourceUrl,
+      styleInstructions,
       writingProfile,
     });
 
