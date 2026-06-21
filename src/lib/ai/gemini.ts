@@ -325,20 +325,16 @@ export async function generatePantipTeaserWithGemini(
 
   let content = normalizeThaiWhitespace(cleanGeneratedText(response.text ?? ""));
 
-  if (!content) {
-    throw new Error("Gemini returned empty Pantip teaser");
-  }
-
-  if (isPantipCaptionTooBotLike(content)) {
-    content = buildShortPantipCaption(input);
-  }
-
-  content = removePantipSourceLinkLine(content, input.sourceUrl);
-  content = ensurePantipCaptionStartsWithTitle(content, input.title);
-  content = `${content}\n\nอ่านต้นทาง: ${input.sourceUrl}`.trim();
-  content = content.replace(/อ่านต้นทาง:\s*\n\s*/g, "อ่านต้นทาง: ");
-
   const usageMetadata = response.usageMetadata as GeminiUsageMetadata | undefined;
+
+  if (!content || isPantipCaptionTooBotLike(content)) {
+    content = buildShortPantipCaption(input);
+  } else {
+    content = removePantipSourceLinkLine(content, input.sourceUrl);
+    content = ensurePantipCaptionStartsWithTitle(content, input.title);
+    content = `${content}\n\nอ่านต้นทาง: ${input.sourceUrl}`.trim();
+    content = content.replace(/อ่านต้นทาง:\s*\n\s*/g, "อ่านต้นทาง: ");
+  }
 
   return {
     content,
