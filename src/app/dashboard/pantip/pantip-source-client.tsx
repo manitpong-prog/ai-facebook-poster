@@ -89,7 +89,7 @@ export function PantipSourceClient({
   const [preview, setPreview] = useState<PantipPreviewResponse | null>(null);
   const [caption, setCaption] = useState("");
   const [styleInstructions, setStyleInstructions] = useState(
-    "ใช้ข้อความตัวอย่างเป็นฐาน แล้วเพิ่มสรุปหรือมุมชวนคิดสั้น ๆ อีก 1-2 ประโยค ให้เหมือนผมหยิบกระทู้นี้มาเล่าเอง ไม่ต้องเป็นทางการ ไม่ต้องยาว",
+    "ขึ้นต้นด้วยหัวข้อกระทู้แบบเต็มก่อน แล้วเพิ่มสรุปหรือมุมชวนคิดสั้น ๆ อีก 1-2 ประโยค ให้เหมือนผมหยิบกระทู้นี้มาเล่าเอง ไม่ต้องเป็นทางการ ไม่ต้องยาว",
   );
   const [loadingState, setLoadingState] = useState<LoadingState>("idle");
   const [errorMessage, setErrorMessage] = useState("");

@@ -186,11 +186,47 @@ function normalizeThaiWhitespace(value: string) {
 }
 
 function buildShortPantipCaption(input: GeneratePantipTeaserInput) {
-  const sourceText = normalizeThaiWhitespace(input.excerpt || input.title);
-  const body =
-    sourceText.length > 220 ? `${sourceText.slice(0, 220).trim()}…` : sourceText;
+  const title = normalizeThaiWhitespace(input.title);
+  const excerpt = normalizeThaiWhitespace(input.excerpt);
+  const summarySource =
+    excerpt && excerpt !== title
+      ? excerpt
+      : "อ่านแล้วชวนคิดต่อว่าถ้าเป็นเราอยู่ในเรื่องนี้ จะมองหรือเลือกทางไหน";
+  const summary =
+    summarySource.length > 190
+      ? `${summarySource.slice(0, 190).trim()}…`
+      : summarySource;
 
-  return `${body}\n\nอ่านต้นทาง: ${input.sourceUrl}`.trim();
+  return `${title}\n\n${summary}\n\nอ่านต้นทาง: ${input.sourceUrl}`.trim();
+}
+
+function ensurePantipCaptionStartsWithTitle(content: string, title: string) {
+  const normalizedTitle = normalizeThaiWhitespace(title);
+
+  if (!normalizedTitle) {
+    return content;
+  }
+
+  const normalizedContent = normalizeThaiWhitespace(content);
+  const titleProbe = normalizedTitle.slice(0, Math.min(normalizedTitle.length, 24));
+
+  if (titleProbe.length >= 8 && normalizedContent.startsWith(titleProbe)) {
+    return content;
+  }
+
+  return `${normalizedTitle}\n\n${content}`.trim();
+}
+
+function removePantipSourceLinkLine(content: string, sourceUrl: string) {
+  return content
+    .split("\n")
+    .filter((line) => {
+      const normalizedLine = normalizeThaiWhitespace(line);
+
+      return !(normalizedLine.startsWith("อ่านต้นทาง:") && normalizedLine.includes(sourceUrl));
+    })
+    .join("\n")
+    .trim();
 }
 
 function isPantipCaptionTooBotLike(content: string) {
@@ -222,7 +258,7 @@ function buildPantipTeaserPrompt(input: GeneratePantipTeaserInput) {
   return `คุณคือผู้ช่วยจัด caption Facebook Page ภาษาไทยสำหรับโพสต์ชวนอ่านกระทู้ Pantip
 
 งานของคุณ:
-เขียน caption สั้น กระชับ และดูเหมือนเจ้าของเพจหยิบกระทู้นี้มาเล่าเอง โดยใช้ชื่อกระทู้และข้อความตัวอย่างเป็นฐานหลัก แล้วเพิ่มสรุป/มุมชวนคิดอีก 1-2 ประโยคสั้น ๆ เพื่อให้โพสต์ไม่ห้วนเกินไป
+เขียน caption สั้น กระชับ และดูเหมือนเจ้าของเพจหยิบกระทู้นี้มาเล่าเอง โดยเริ่มต้นด้วยชื่อกระทู้แบบเต็มตามที่ให้มา แล้วค่อยต่อด้วยสรุปหรือมุมชวนคิดจากเนื้อหาอีก 1-2 ประโยคสั้น ๆ เพื่อให้โพสต์ไม่ห้วนเกินไป
 
 ชื่อกระทู้:
 ${input.title}
@@ -242,14 +278,14 @@ ${input.sourceUrl}
 - คำที่ไม่อยากให้ใช้: ${profile?.bannedWords || ""}
 - แนวทาง CTA / ตัวอย่าง CTA: ${profile?.callToAction || "ไม่จำเป็นต้องมี CTA ถ้าแคปชั่นสั้นพอแล้ว"}
 - ตัวอย่างโพสต์เก่า/แนวทางเพิ่มเติม: ${profile?.samplePosts || "ไม่มี"}
-- สไตล์เฉพาะรอบนี้จากผู้ใช้: ${styleInstructions || "ใช้ข้อความตัวอย่างเป็นฐาน แล้วเพิ่มสรุปหรือมุมชวนคิดสั้น ๆ อีก 1-2 ประโยค ให้เหมือนผมหยิบกระทู้นี้มาเล่าเอง ไม่ต้องเป็นทางการ ไม่ต้องยาว"}
+- สไตล์เฉพาะรอบนี้จากผู้ใช้: ${styleInstructions || "ขึ้นต้นด้วยหัวข้อกระทู้แบบเต็มก่อน แล้วเพิ่มสรุปหรือมุมชวนคิดสั้น ๆ อีก 1-2 ประโยค ให้เหมือนผมหยิบกระทู้นี้มาเล่าเอง ไม่ต้องเป็นทางการ ไม่ต้องยาว"}
 
 กติกาเฉพาะสำหรับโพสต์จาก Pantip:
 1. เขียนเป็นภาษาไทยเท่านั้น
 2. ความยาวไม่เกิน ${maxWords} คำ
 3. โครงสร้างที่ต้องการคือ 2 ย่อหน้าสั้น ๆ แล้วเว้นบรรทัด แล้วตามด้วย “อ่านต้นทาง: <ลิงก์>”
-4. ย่อหน้าแรกให้ยึดข้อความตัวอย่าง/ชื่อกระทู้เป็นหลัก
-5. ย่อหน้าที่สองให้เพิ่มสรุปหรือมุมชวนคิดอีก 1-2 ประโยคสั้น ๆ โดยไม่แต่งข้อเท็จจริงใหม่เกินข้อมูลที่ให้มา
+4. ย่อหน้าแรกต้องเป็นชื่อกระทู้แบบเต็มตามที่ให้มา ห้ามย่อ ห้ามเขียนใหม่ ห้ามตัดให้สั้นลง
+5. ย่อหน้าที่สองให้เพิ่มสรุปหรือมุมชวนคิดจากข้อความตัวอย่างอีก 1-2 ประโยคสั้น ๆ โดยไม่แต่งข้อเท็จจริงใหม่เกินข้อมูลที่ให้มา
 6. ห้ามวิเคราะห์ยาว ห้ามสอน ห้ามสรุปเหมือนข่าว ห้ามแต่งประเด็นเพิ่ม
 7. ห้ามใช้ภาษาทางการหรือภาษารายงาน เช่น “บทเรียน”, “ประเด็นที่น่าสนใจ”, “สถานการณ์”, “สะท้อนให้เห็น”, “สังคมควรตระหนัก”, “จากกรณีดังกล่าว”, “สิ่งที่น่าสนใจคือ”
 8. ห้ามคัดข้อความยาวจากกระทู้ ให้ใช้แค่ความหมายสั้น ๆ จาก title/excerpt ที่ให้มาเท่านั้น
@@ -259,9 +295,9 @@ ${input.sourceUrl}
 12. ห้ามใส่ markdown, bullet, emoji เยอะ หรือ code block
 
 ตัวอย่างรูปแบบที่ต้องการ:
-ถ้าเราหาเงินค่าสินสอดไม่ครบถึงวันที่จะแต่ง แล้วแฟนไม่ยอมแต่ง ทั้ง ๆ ที่เราพยายามสุดตัวที่สุดแล้ว จะเอายังไง
+[ชื่อกระทู้แบบเต็มจากต้นทาง]
 
-เรื่องแบบนี้อ่านแล้วน่าคิดเหมือนกันว่า ถ้าเป็นเราอยู่ตรงนั้น จะเลือกไปต่อหรือพอแค่นี้ดี
+[สรุปหรือมุมชวนคิดสั้น ๆ จากเนื้อหา 1-2 ประโยค]
 
 อ่านต้นทาง: ${input.sourceUrl}
 
@@ -297,10 +333,9 @@ export async function generatePantipTeaserWithGemini(
     content = buildShortPantipCaption(input);
   }
 
-  if (!content.includes(input.sourceUrl)) {
-    content = `${content}\n\nอ่านต้นทาง: ${input.sourceUrl}`.trim();
-  }
-
+  content = removePantipSourceLinkLine(content, input.sourceUrl);
+  content = ensurePantipCaptionStartsWithTitle(content, input.title);
+  content = `${content}\n\nอ่านต้นทาง: ${input.sourceUrl}`.trim();
   content = content.replace(/อ่านต้นทาง:\s*\n\s*/g, "อ่านต้นทาง: ");
 
   const usageMetadata = response.usageMetadata as GeminiUsageMetadata | undefined;
