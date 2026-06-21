@@ -345,12 +345,15 @@ export async function generatePantipTeaserWithGemini(
   };
 }
 
+export type NewsPostMode = "story" | "short" | "sports";
+
 export type GenerateNewsSourcePostInput = {
   sourceName: string;
   title: string;
   summary: string;
   articleText?: string;
   sourceUrl: string;
+  postMode?: NewsPostMode;
   styleInstructions?: string;
   writingProfile?: Pick<
     WritingProfile,
@@ -366,14 +369,84 @@ export type GenerateNewsSourcePostInput = {
   > | null;
 };
 
+function getNewsModeSettings(mode: NewsPostMode | undefined) {
+  switch (mode) {
+    case "short":
+      return {
+        label: "สรุปสั้น",
+        maxWords: 95,
+        paragraphRule: "เขียนประมาณ 1-2 ย่อหน้าสั้น ๆ เน้นเข้าใจไว ไม่ต้องลงรายละเอียดเยอะ",
+        angleRule: "ใส่มุมเล่าให้เพื่อนฟังได้ 1 ประโยคสั้น ๆ ถ้าเหมาะสม",
+      };
+    case "sports":
+      return {
+        label: "ข่าวกีฬา / ข่าวบอล",
+        maxWords: 150,
+        paragraphRule: "เขียนประมาณ 2-3 ย่อหน้าสั้น ๆ เหมือนเล่าข่าวบอลให้เพื่อนฟัง",
+        angleRule: "ใส่มุมแฟนบอลหรือความเห็นเบา ๆ ได้ แต่ต้องไม่ฟันธงเกินข่าวต้นทาง",
+      };
+    case "story":
+    default:
+      return {
+        label: "เล่าเป็นข่าวแบบเต็มขึ้น",
+        maxWords: 210,
+        paragraphRule: "เขียนประมาณ 3-5 ย่อหน้าสั้น ๆ ให้มีน้ำหนักมากกว่าสรุปสั้น แต่ยังอ่านง่ายบน Facebook",
+        angleRule: "ใส่มุมเล่าให้เพื่อนฟังหรือมุมชวนคิดเล็กน้อยได้ โดยต้องแยกจากข้อเท็จจริงและไม่แต่งข้อมูลเพิ่ม",
+      };
+  }
+}
+
+function stripNewsBotLeadIn(content: string, sourceName: string) {
+  const sourceFirstWord = sourceName.split(/[·|\-]/)[0]?.trim() || sourceName;
+  const escapedSource = sourceFirstWord.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const leadInPatterns = [
+    new RegExp(`^${escapedSource}\\s*(?:รายงานว่า|ระบุว่า|เผยว่า)\\s*`, "i"),
+    /^(?:CNN|BBC|The Guardian|Guardian|Reuters|AP|AFP|Sky Sports|ESPN)\s*(?:รายงานว่า|ระบุว่า|เผยว่า)\s*/i,
+    /^มีรายงานว่า\s*/i,
+    /^สำนักข่าว(?:ต่างประเทศ)?รายงานว่า\s*/i,
+    /^รายงานข่าวระบุว่า\s*/i,
+  ];
+
+  let cleaned = content.trim();
+
+  for (const pattern of leadInPatterns) {
+    cleaned = cleaned.replace(pattern, "").trim();
+  }
+
+  return cleaned;
+}
+
 function buildNewsFallbackCaption(input: GenerateNewsSourcePostInput) {
   const title = normalizeThaiWhitespace(input.title);
+  const modeSettings = getNewsModeSettings(input.postMode);
   const summarySource = normalizeThaiWhitespace(input.summary || input.articleText || title);
-  const summary = summarySource.length > 260
-    ? `${summarySource.slice(0, 260).trim()}…`
+  const maxSummaryLength = input.postMode === "story" ? 420 : input.postMode === "sports" ? 320 : 240;
+  const summary = summarySource.length > maxSummaryLength
+    ? `${summarySource.slice(0, maxSummaryLength).trim()}…`
     : summarySource;
+  const intro = title || "มีข่าวที่น่าสนใจจากต้นทางนี้";
 
-  return `${title}\n\n${summary}\n\nที่มา: ${input.sourceName}\nอ่านต่อ: ${input.sourceUrl}`.trim();
+  if (input.postMode === "short") {
+    return `${intro}
+
+${summary}
+
+ที่มา: ${input.sourceName}
+อ่านต่อ: ${input.sourceUrl}`.trim();
+  }
+
+  const angle = input.postMode === "sports"
+    ? "ถ้าเรื่องนี้ขยับต่อจริง ก็น่าตามว่าทีมหรือคนที่เกี่ยวข้องจะตัดสินใจกันยังไงต่อ"
+    : "ถ้าเล่าแบบง่าย ๆ เรื่องนี้ยังมีรายละเอียดให้ตามต่อ เพราะผลลัพธ์อาจกระทบมากกว่าแค่ประเด็นในพาดหัว";
+
+  return `${intro}
+
+${summary}
+
+${angle}
+
+ที่มา: ${input.sourceName}
+อ่านต่อ: ${input.sourceUrl}`.trim();
 }
 
 function removeNewsSourceLines(content: string, sourceUrl: string) {
@@ -396,6 +469,11 @@ function isNewsCaptionTooRiskyOrBotLike(content: string) {
     "ข่าวต่างประเทศน่าสนใจวันนี้",
     "อัปเดตข่าวต่างประเทศ",
     "ประเด็นนี้น่าจับตา",
+    "CNN รายงานว่า",
+    "BBC รายงานว่า",
+    "The Guardian รายงานว่า",
+    "มีรายงานว่า",
+    "สำนักข่าวรายงานว่า",
     "สถานการณ์ดังกล่าว",
     "จากกรณีดังกล่าว",
     "สะท้อนให้เห็น",
@@ -414,14 +492,19 @@ function isNewsCaptionTooRiskyOrBotLike(content: string) {
 
 function buildNewsSourcePostPrompt(input: GenerateNewsSourcePostInput) {
   const profile = input.writingProfile;
-  const maxWords = Math.min(profile?.maxWords ?? 140, 180);
+  const modeSettings = getNewsModeSettings(input.postMode);
+  const profileMaxWords = profile?.maxWords ?? modeSettings.maxWords;
+  const maxWords = Math.min(profileMaxWords, modeSettings.maxWords);
   const styleInstructions = input.styleInstructions?.trim();
   const articleText = normalizeThaiWhitespace(input.articleText || "").slice(0, 5500);
 
   return `คุณคือผู้ช่วยเขียนโพสต์ Facebook Page ภาษาไทยจากข่าวต่างประเทศ
 
 งานของคุณ:
-อ่าน/แปล/ทำความเข้าใจข่าวต้นทางเท่าที่ให้มา แล้วเขียนเป็นโพสต์ภาษาไทยสั้น ๆ เหมือนเล่าให้เพื่อนอ่าน ไม่ใช่แปลทั้งบทความ และไม่ใช่ภาษาข่าวแข็ง ๆ
+อ่าน/แปล/ทำความเข้าใจข่าวต้นทางเท่าที่ให้มา แล้วเขียนใหม่เป็นโพสต์ภาษาไทยในสไตล์ของเพจ เหมือนเล่าให้เพื่อนอ่าน ไม่ใช่แปลทั้งบทความ ไม่ใช่ภาษาข่าวแข็ง ๆ และไม่ใช่บอทสรุปข่าว
+
+รูปแบบโพสต์ที่ผู้ใช้เลือก:
+${modeSettings.label}
 
 แหล่งข่าว:
 ${input.sourceName}
@@ -447,26 +530,33 @@ ${input.sourceUrl}
 - คำที่ไม่อยากให้ใช้: ${profile?.bannedWords || ""}
 - แนวทาง CTA / ตัวอย่าง CTA: ${profile?.callToAction || "ไม่จำเป็นต้องมี CTA ถ้าโพสต์จบดีแล้ว"}
 - ตัวอย่างโพสต์เก่า/แนวทางเพิ่มเติม: ${profile?.samplePosts || "ไม่มี"}
-- สไตล์เฉพาะรอบนี้จากผู้ใช้: ${styleInstructions || "เขียนเหมือนเล่าให้เพื่อนอ่าน สั้น กระชับ ไม่เป็นทางการเกินไป ไม่ต้องเขียนเหมือนข่าวทีวี และใส่มุมเล่า/ความเห็นเบา ๆ ได้เล็กน้อย"}
+- สไตล์เฉพาะรอบนี้จากผู้ใช้: ${styleInstructions || "เขียนเหมือนเล่าให้เพื่อนอ่าน ไม่เป็นทางการเกินไป ไม่ต้องเขียนเหมือนข่าวทีวี และใส่มุมเล่า/ความเห็นเบา ๆ ได้เล็กน้อย"}
+
+กติกาตามรูปแบบที่เลือก:
+- ${modeSettings.paragraphRule}
+- ${modeSettings.angleRule}
+- ความยาวไม่เกิน ${maxWords} คำ
 
 กติกาสำคัญ:
 1. เขียนเป็นภาษาไทยเท่านั้น
-2. ความยาวไม่เกิน ${maxWords} คำ
-3. เขียน 1-2 ย่อหน้าสั้น ๆ แล้วตามด้วยเครดิตและลิงก์ต้นทาง
+2. ห้ามขึ้นต้นด้วยชื่อสำนักข่าวหรือประโยคแบบบอท เช่น “CNN รายงานว่า”, “BBC รายงานว่า”, “The Guardian รายงานว่า”, “มีรายงานว่า”, “สำนักข่าวรายงานว่า”
+3. ให้เริ่มย่อหน้าแรกด้วยแก่นของข่าวทันที เช่น ผลที่เกิดขึ้น เหตุการณ์หลัก ดีลที่กำลังขยับ หรือประเด็นที่คนอ่านควรรู้
 4. ไม่ต้องขึ้นต้นด้วยคำหัวข้อแบบบอท เช่น “ข่าวต่างประเทศน่าสนใจวันนี้”, “อัปเดตฟุตบอลต่างประเทศ”, “ประเด็นนี้น่าจับตา”
-5. ไม่แปลข่าวทั้งบทความ ห้ามคัดลอกข้อความยาวจากต้นทาง
-6. สรุปเฉพาะประเด็นสำคัญเท่าที่ข้อมูลรองรับ ห้ามแต่งข้อมูลเพิ่ม
+5. AI อ่านหรือแปลข่าวทั้งบทความเพื่อทำความเข้าใจได้ แต่ห้ามแปลข่าวทั้งบทความไปโพสต์ และห้ามคัดลอกข้อความยาวจากต้นทาง
+6. สรุป/เขียนใหม่เฉพาะประเด็นสำคัญเท่าที่ข้อมูลรองรับ ห้ามแต่งข้อมูลเพิ่ม
 7. ใส่มุมเล่าให้เพื่อนอ่านได้ แต่ต้องไม่ฟันธงเกินข่าวต้นทาง
 8. ห้ามใช้รูปแบบ bullet/markdown/code block
-9. ห้ามใช้ภาษาทางการเกินไปหรือภาษารายงาน เช่น “สถานการณ์ดังกล่าว”, “จากกรณีดังกล่าว”, “สะท้อนให้เห็น”
+9. ห้ามใช้ภาษาทางการเกินไปหรือภาษารายงาน เช่น “สถานการณ์ดังกล่าว”, “จากกรณีดังกล่าว”, “สะท้อนให้เห็น”, “สังคมควรตระหนัก”
 10. ต้องปิดท้ายด้วยรูปแบบนี้เสมอ:
 ที่มา: ${input.sourceName}
 อ่านต่อ: ${input.sourceUrl}
 
-ตัวอย่างรูปแบบ:
-CNN รายงานว่า [สรุปข่าวแบบภาษาคนอ่านง่าย 1-2 ย่อหน้าสั้น ๆ]
+ตัวอย่างโครงสร้างที่ต้องการ:
+[เปิดด้วยประเด็นของข่าวเลย ไม่ต้องบอกว่าสำนักข่าวรายงานว่า]
 
-[มุมเล่าให้เพื่อนฟังแบบสั้น ๆ]
+[เล่าเนื้อหาข่าวเป็นภาษาคน อ่านง่าย ตามรูปแบบที่เลือก]
+
+[มุมเล่าให้เพื่อนฟังหรือความเห็นเบา ๆ โดยไม่ฟันธงเกินข่าว]
 
 ที่มา: ${input.sourceName}
 อ่านต่อ: ${input.sourceUrl}
@@ -494,6 +584,7 @@ export async function generateNewsSourcePostWithGemini(
   }
 
   let content = normalizeThaiWhitespace(cleanGeneratedText(response.text ?? ""));
+  content = stripNewsBotLeadIn(content, input.sourceName);
   const usageMetadata = response.usageMetadata as GeminiUsageMetadata | undefined;
 
   if (!content || isNewsCaptionTooRiskyOrBotLike(content)) {

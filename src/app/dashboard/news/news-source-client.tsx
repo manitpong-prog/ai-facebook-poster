@@ -14,6 +14,26 @@ type NewsItemsResponse = {
   items: NewsFeedItem[];
 };
 
+type NewsPostMode = "story" | "short" | "sports";
+
+const NEWS_POST_MODE_OPTIONS: Array<{ id: NewsPostMode; label: string; description: string }> = [
+  {
+    id: "story",
+    label: "เล่าเป็นข่าวแบบเต็มขึ้น",
+    description: "เหมาะกับข่าวที่มีรายละเอียด อยากให้เล่าเป็นเรื่องมากกว่าสรุปสั้น",
+  },
+  {
+    id: "short",
+    label: "สรุปสั้น",
+    description: "เหมาะกับข่าวเร็วหรือข่าวที่ต้องการโพสต์กระชับ",
+  },
+  {
+    id: "sports",
+    label: "ข่าวกีฬา / ข่าวบอล",
+    description: "เหมาะกับข่าวดีลนักเตะ ทีม โค้ช หรือประเด็นกีฬา",
+  },
+];
+
 type NewsPreviewResponse = {
   ok: true;
   sourceName: string;
@@ -21,6 +41,7 @@ type NewsPreviewResponse = {
   summary: string;
   articleTextPreview: string;
   sourceUrl: string;
+  postMode: NewsPostMode;
   caption: string;
   aiUsage: {
     model: string;
@@ -120,8 +141,9 @@ export function NewsSourceClient({
   const [selectedItem, setSelectedItem] = useState<NewsFeedItem | null>(null);
   const [preview, setPreview] = useState<NewsPreviewResponse | null>(null);
   const [caption, setCaption] = useState("");
+  const [postMode, setPostMode] = useState<NewsPostMode>("story");
   const [styleInstructions, setStyleInstructions] = useState(
-    "เขียนเหมือนเล่าให้เพื่อนอ่าน สั้น กระชับ ไม่เป็นทางการเกินไป ไม่ต้องเขียนเหมือนข่าวทีวี และใส่มุมเล่า/ความเห็นเบา ๆ ได้เล็กน้อย",
+    "เขียนเหมือนเล่าให้เพื่อนอ่าน ไม่ต้องขึ้นต้นด้วยชื่อสำนักข่าวหรือคำว่า มีรายงานว่า ไม่ต้องเขียนเหมือนข่าวทีวี และใส่มุมเล่า/ความเห็นเบา ๆ ได้เล็กน้อย",
   );
   const [loadingState, setLoadingState] = useState<LoadingState>("idle");
   const [errorMessage, setErrorMessage] = useState("");
@@ -205,6 +227,7 @@ export function NewsSourceClient({
           title: item.title,
           summary: item.summary,
           sourceUrl: item.link,
+          postMode,
           styleInstructions,
         }),
       });
@@ -333,10 +356,33 @@ export function NewsSourceClient({
           </div>
         ) : null}
 
-        <div className="mt-4 space-y-2 rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
-          <label className="block text-sm font-medium text-slate-200" htmlFor="news-style">
-            สไตล์โพสต์รอบนี้
-          </label>
+        <div className="mt-4 grid gap-4 rounded-2xl border border-slate-800 bg-slate-950/60 p-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-slate-200" htmlFor="news-post-mode">
+              รูปแบบโพสต์
+            </label>
+            <select
+              id="news-post-mode"
+              value={postMode}
+              onChange={(event) => setPostMode(event.target.value as NewsPostMode)}
+              className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30"
+              disabled={isBusy}
+            >
+              {NEWS_POST_MODE_OPTIONS.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs leading-5 text-slate-500">
+              {NEWS_POST_MODE_OPTIONS.find((option) => option.id === postMode)?.description}
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-slate-200" htmlFor="news-style">
+              สไตล์โพสต์รอบนี้
+            </label>
           <textarea
             id="news-style"
             value={styleInstructions}
@@ -346,8 +392,9 @@ export function NewsSourceClient({
             disabled={isBusy}
           />
           <p className="text-xs leading-5 text-slate-500">
-            ระบบยังใช้ Writing Style หลักของเพจด้วย ช่องนี้ใช้ปรับเฉพาะข่าวรอบนี้ เช่น ให้เล่าเหมือนเพื่อนคุยกัน หรือให้สั้นลงมาก ๆ
+            ระบบยังใช้ Writing Style หลักของเพจด้วย ช่องนี้ใช้ปรับเฉพาะข่าวรอบนี้ เช่น ให้เล่าเหมือนเพื่อนคุยกัน ห้ามขึ้นต้นแบบบอท หรือให้สั้นลงมาก ๆ
           </p>
+          </div>
         </div>
       </section>
 

@@ -463,3 +463,14 @@ Pantip captions are intentionally short. The caption prompt now treats the extra
 - The News dashboard source selector groups sources by category so the user can choose a more specific feed before loading stories.
 - Custom RSS URL remains available for sources that are not hardcoded yet.
 - The flow remains manual-only: choose a story, preview the AI caption, edit if needed, and manually publish.
+
+
+### News Source Post writing modes update
+
+- News Source Post now supports a post mode selector:
+  - `เล่าเป็นข่าวแบบเต็มขึ้น` for a fuller rewritten news-style Facebook post.
+  - `สรุปสั้น` for quick short updates.
+  - `ข่าวกีฬา / ข่าวบอล` for sports/football style updates.
+- The AI prompt now explicitly avoids bot-like lead-ins such as `CNN รายงานว่า`, `BBC รายงานว่า`, `The Guardian รายงานว่า`, `มีรายงานว่า`, and `สำนักข่าวรายงานว่า`.
+- The generated post should open with the actual news angle immediately, then end with source credit and the original link.
+- The feature remains manual-only: user chooses the RSS item, previews/edits the caption, and manually publishes.

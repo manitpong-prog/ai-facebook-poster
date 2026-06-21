@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { generateNewsSourcePostWithGemini } from "@/lib/ai/gemini";
+import {
+  generateNewsSourcePostWithGemini,
+  type NewsPostMode,
+} from "@/lib/ai/gemini";
 import { getSessionResult } from "@/lib/session";
 import { fetchNewsArticleContent } from "@/lib/news/rss";
 import {
@@ -17,6 +20,7 @@ type PreviewRequestBody = {
   title?: unknown;
   summary?: unknown;
   sourceUrl?: unknown;
+  postMode?: unknown;
   styleInstructions?: unknown;
 };
 
@@ -34,6 +38,15 @@ function getReadableError(error: unknown) {
 
 function normalizeBodyString(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+}
+
+
+function normalizePostMode(value: unknown): NewsPostMode {
+  if (value === "short" || value === "sports" || value === "story") {
+    return value;
+  }
+
+  return "story";
 }
 
 function validateHttpUrl(value: string) {
@@ -72,6 +85,7 @@ export async function POST(request: Request) {
   const title = normalizeBodyString(body?.title, 260);
   const summary = normalizeBodyString(body?.summary, 1200);
   const sourceUrl = validateHttpUrl(normalizeBodyString(body?.sourceUrl, 1200));
+  const postMode = normalizePostMode(body?.postMode);
   const styleInstructions = normalizeBodyString(body?.styleInstructions, 800);
 
   if (!sourceUrl) {
@@ -106,6 +120,7 @@ export async function POST(request: Request) {
       summary: article.summary || summary,
       articleText: article.articleText,
       sourceUrl: article.sourceUrl,
+      postMode,
       styleInstructions,
       writingProfile,
     });
@@ -117,6 +132,7 @@ export async function POST(request: Request) {
       summary: article.summary || summary,
       articleTextPreview: article.articleText.slice(0, 1200),
       sourceUrl: article.sourceUrl,
+      postMode,
       caption: captionResult.content,
       aiUsage: {
         model: captionResult.model,
