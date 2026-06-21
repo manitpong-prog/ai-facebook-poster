@@ -436,3 +436,8 @@ Pantip captions are intentionally short. The caption prompt now treats the extra
 - Preview image now uses a readable card built from the Pantip title, short excerpt, and source URL.
 - The system no longer depends on a live Pantip webpage screenshot as the main preview image.
 - Images remain temporary only and are uploaded directly to Facebook after manual approval.
+
+
+## Pantip readable card cleanup
+- Pantip preview cards now sanitize extracted text to avoid using navigation/footer strings such as Pantip Download App or Pantip Certified Developer.
+- Cards use the best Thai title/excerpt candidate from page title/meta/embedded data and fall back to the topic title if the excerpt is not useful.
