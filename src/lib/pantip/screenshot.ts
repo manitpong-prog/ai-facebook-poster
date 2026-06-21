@@ -25,6 +25,12 @@ const MOBILE_VIEWPORT = {
   hasTouch: true,
 };
 
+const CARD_VIEWPORT = {
+  width: 1080,
+  height: 1350,
+  deviceScaleFactor: 1,
+};
+
 const PANTIP_LAYOUT_PHRASES = [
   "Pantip Download App",
   "Pantip Certified Developer",
@@ -325,6 +331,44 @@ function extractQuotedJsonCandidates(payload: string, keys: string[], source: st
   return candidates;
 }
 
+function textBlocksFromHtml(html: string) {
+  return decodeHtmlEntities(
+    html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+      .replace(/<svg[\s\S]*?<\/svg>/gi, " ")
+      .replace(/<\/?(?:p|div|section|article|main|header|footer|h[1-6]|li|br|blockquote)[^>]*>/gi, "\n")
+      .replace(/<[^>]+>/g, " "),
+  )
+    .split(/\n+/g)
+    .map((block) => cleanPantipContentText(block))
+    .filter((block) => block.length >= 16);
+}
+
+function extractVisibleTextCandidates(payload: string, source: string) {
+  const candidates: Candidate[] = [];
+
+  for (const block of textBlocksFromHtml(payload)) {
+    candidates.push({ value: block, source: `${source}:visible-text` });
+  }
+
+  const decodedPayload = decodeHtmlEntities(decodeEscapedUnicode(payload));
+  const quotedThaiPattern = /["'`]([^"'`]{12,900}[ก-๙][^"'`]{0,900})["'`]/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = quotedThaiPattern.exec(decodedPayload))) {
+    if (match[1]) {
+      candidates.push({
+        value: normalizeJsonString(match[1]),
+        source: `${source}:quoted-thai`,
+      });
+    }
+  }
+
+  return candidates;
+}
+
 function cleanPantipContentText(value: string) {
   let cleaned = decodeHtmlEntities(stripPantipSuffix(stripHtmlTags(value)));
 
@@ -454,6 +498,7 @@ function extractMetadataCandidatesFromPayload(payload: string, source: string) {
   titleCandidates.push(...extractQuotedJsonCandidates(payload, TITLE_KEYS, `${source}:quoted-json`));
   excerptCandidates.push(...extractJsonScriptCandidates(payload, EXCERPT_KEYS, `${source}:script-json`));
   excerptCandidates.push(...extractQuotedJsonCandidates(payload, EXCERPT_KEYS, `${source}:quoted-json`));
+  excerptCandidates.push(...extractVisibleTextCandidates(payload, source));
 
   return { titleCandidates, excerptCandidates };
 }
@@ -462,24 +507,140 @@ function buildFallbackCardHtml(input: { title: string; excerpt: string; sourceUr
   const safeExcerpt = input.excerpt || "อ่านรายละเอียดต่อได้ที่ลิงก์ต้นทาง";
   const displayUrl = input.sourceUrl.replace(/^https?:\/\//i, "");
 
-  return `
-    <section id="ai-pantip-source-card" style="box-sizing:border-box;width:100%;min-height:932px;padding:18px;background:#0f172a;color:#ffffff;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-      <div style="overflow:hidden;min-height:892px;border-radius:34px;border:1px solid rgba(148,163,184,0.30);background:linear-gradient(180deg,#253f94 0%,#1f3b86 48%,#172554 100%);box-shadow:0 22px 70px rgba(0,0,0,0.38);">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:15px 18px;background:#30235f;color:#fde68a;font-size:15px;font-weight:850;">
-          <span>Pantip</span><span style="font-size:12px;color:#ddd6fe;font-weight:750;">กระทู้น่าอ่าน</span>
-        </div>
-        <div style="padding:26px 22px 22px;">
-          <div style="display:inline-flex;border-radius:999px;background:rgba(253,224,71,0.16);border:1px solid rgba(253,224,71,0.34);padding:7px 12px;color:#fde047;font-size:13px;font-weight:780;">สรุปจากลิงก์ Pantip</div>
-          <h1 style="margin:22px 0 0;font-size:29px;line-height:1.30;font-weight:880;color:#ffffff;letter-spacing:-0.01em;">${escapeHtml(input.title)}</h1>
-          <div style="margin-top:22px;padding:18px;border-radius:24px;background:rgba(15,23,42,0.44);border:1px solid rgba(191,219,254,0.24);">
-            <div style="margin-bottom:10px;color:#cbd5e1;font-size:13px;font-weight:760;">ตัวอย่างข้อความสั้น ๆ</div>
-            <p style="margin:0;font-size:20px;line-height:1.62;color:#e2e8f0;font-weight:540;">${escapeHtml(safeExcerpt)}</p>
-          </div>
-          <div style="margin-top:24px;border-radius:22px;background:rgba(15,23,42,0.72);border:1px solid rgba(191,219,254,0.30);padding:15px 16px;color:#bfdbfe;font-size:14px;line-height:1.5;word-break:break-word;">อ่านต้นทาง: ${escapeHtml(displayUrl)}</div>
-        </div>
-      </div>
-    </section>
-  `;
+  return `<!doctype html>
+    <html lang="th">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+        <style>
+          * { box-sizing: border-box; }
+          html, body { margin: 0; width: 1080px; height: 1350px; overflow: hidden; }
+          body {
+            background: #070b18;
+            color: #ffffff;
+            font-family: 'Noto Sans Thai', Tahoma, Arial, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            text-rendering: geometricPrecision;
+          }
+          .canvas {
+            width: 1080px;
+            height: 1350px;
+            padding: 72px;
+            background:
+              radial-gradient(circle at top left, rgba(253,224,71,0.18), transparent 34%),
+              radial-gradient(circle at bottom right, rgba(96,165,250,0.22), transparent 38%),
+              linear-gradient(180deg, #111827 0%, #0f172a 100%);
+          }
+          .card {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            border-radius: 54px;
+            border: 2px solid rgba(191,219,254,0.28);
+            background: linear-gradient(180deg, #293f95 0%, #1e3a8a 48%, #172554 100%);
+            box-shadow: 0 34px 92px rgba(0,0,0,0.46);
+          }
+          .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 26px 34px;
+            background: #32235f;
+            border-bottom: 1px solid rgba(255,255,255,0.12);
+          }
+          .brand {
+            color: #fde68a;
+            font-size: 24px;
+            line-height: 1;
+            font-weight: 900;
+          }
+          .tag {
+            color: #e9d5ff;
+            font-size: 22px;
+            line-height: 1;
+            font-weight: 800;
+          }
+          .content { padding: 58px 58px 48px; }
+          .pill {
+            display: inline-flex;
+            border-radius: 999px;
+            border: 1px solid rgba(253,224,71,0.36);
+            background: rgba(253,224,71,0.17);
+            padding: 12px 22px;
+            color: #fef08a;
+            font-size: 22px;
+            line-height: 1;
+            font-weight: 800;
+          }
+          h1 {
+            margin: 44px 0 0;
+            color: #ffffff;
+            font-size: 58px;
+            line-height: 1.28;
+            letter-spacing: -0.02em;
+            font-weight: 900;
+            overflow-wrap: anywhere;
+          }
+          .detailBox {
+            margin-top: 46px;
+            border-radius: 34px;
+            border: 1px solid rgba(191,219,254,0.30);
+            background: rgba(15,23,42,0.50);
+            padding: 34px 38px 36px;
+          }
+          .detailLabel {
+            margin-bottom: 18px;
+            color: #bfdbfe;
+            font-size: 23px;
+            line-height: 1;
+            font-weight: 800;
+          }
+          .detailText {
+            margin: 0;
+            color: #e2e8f0;
+            font-size: 36px;
+            line-height: 1.6;
+            font-weight: 600;
+            overflow-wrap: anywhere;
+          }
+          .source {
+            position: absolute;
+            left: 58px;
+            right: 58px;
+            bottom: 48px;
+            border-radius: 28px;
+            border: 1px solid rgba(191,219,254,0.30);
+            background: rgba(15,23,42,0.76);
+            padding: 22px 26px;
+            color: #bfdbfe;
+            font-size: 24px;
+            line-height: 1.45;
+            font-weight: 650;
+            overflow-wrap: anywhere;
+          }
+        </style>
+      </head>
+      <body>
+        <main class="canvas">
+          <section class="card" aria-label="Pantip readable card">
+            <div class="topbar"><div class="brand">Pantip</div><div class="tag">กระทู้น่าอ่าน</div></div>
+            <div class="content">
+              <div class="pill">สรุปจากลิงก์ Pantip</div>
+              <h1>${escapeHtml(input.title)}</h1>
+              <div class="detailBox">
+                <div class="detailLabel">รายละเอียดในกระทู้</div>
+                <p class="detailText">${escapeHtml(safeExcerpt)}</p>
+              </div>
+            </div>
+            <div class="source">อ่านต้นทาง: ${escapeHtml(displayUrl)}</div>
+          </section>
+        </main>
+      </body>
+    </html>`;
 }
 
 async function fetchPantipHtml(sourceUrl: string) {
@@ -651,7 +812,10 @@ async function fetchPantipMetadata(sourceUrl: string): Promise<PantipMetadata> {
     );
   }
 
-  const safeExcerpt = excerpt?.value && excerpt.value !== title.value ? excerpt.value : "อ่านรายละเอียดต่อได้ที่ลิงก์ต้นทาง";
+  const safeExcerpt =
+    excerpt?.value && !excerpt.value.includes(title.value) && excerpt.value !== title.value
+      ? excerpt.value
+      : "อ่านรายละเอียดต่อได้ที่ลิงก์ต้นทาง";
 
   console.info("[pantip-preview] metadata extracted", {
     titleSource: title.source,
@@ -675,21 +839,25 @@ async function renderReadableCardImage(input: { title: string; excerpt: string; 
       "--disable-web-security",
       "--disable-features=Translate,BackForwardCache,AcceptCHFrame",
     ],
-    defaultViewport: MOBILE_VIEWPORT,
+    defaultViewport: CARD_VIEWPORT,
     executablePath: await getExecutablePath(),
     headless: true,
   });
 
   try {
     const page = await browser.newPage();
-    await page.setViewport(MOBILE_VIEWPORT);
+    await page.setViewport(CARD_VIEWPORT);
     await page.setContent(buildFallbackCardHtml(input), { waitUntil: "load" });
-    await page.evaluate(() => {
+    await page.evaluate(async () => {
       document.body.style.margin = "0";
       document.documentElement.style.background = "#0f172a";
       window.scrollTo(0, 0);
+
+      if ("fonts" in document) {
+        await document.fonts.ready;
+      }
     });
-    await new Promise((resolve) => setTimeout(resolve, 120));
+    await new Promise((resolve) => setTimeout(resolve, 400));
 
     return Buffer.from(
       await page.screenshot({

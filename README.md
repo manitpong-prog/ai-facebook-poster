@@ -441,3 +441,9 @@ Pantip captions are intentionally short. The caption prompt now treats the extra
 ## Pantip readable card cleanup
 - Pantip preview cards now sanitize extracted text to avoid using navigation/footer strings such as Pantip Download App or Pantip Certified Developer.
 - Cards use the best Thai title/excerpt candidate from page title/meta/embedded data and fall back to the topic title if the excerpt is not useful.
+
+
+## Pantip card renderer note
+- The Pantip preview card is generated from the extracted topic title and topic detail/excerpt only.
+- The card renderer now uses a Thai web font and waits for fonts to load before taking the generated-card screenshot, to avoid missing Thai glyphs in server-rendered images.
+- The renderer does not screenshot the live Pantip page.
