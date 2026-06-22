@@ -53,6 +53,18 @@ const PANTIP_LAYOUT_PHRASES = [
   "Developer",
 ];
 
+const PANTIP_COMMENT_MARKERS = [
+  "ความคิดเห็น",
+  "ความคิดเห็นที่",
+  "แสดงความคิดเห็น",
+  "ตอบกลับ",
+  "ถูกใจ",
+  "สมาชิกหมายเลข",
+  "คอมเมนต์",
+  "comment",
+  "reply",
+];
+
 const TITLE_KEYS = [
   "headline",
   "title",
@@ -188,7 +200,11 @@ function readHtmlAttributes(tag: string) {
   return attrs;
 }
 
-function readMetaCandidates(html: string, key: string, source: string): Candidate[] {
+function readMetaCandidates(
+  html: string,
+  key: string,
+  source: string,
+): Candidate[] {
   const candidates: Candidate[] = [];
   const metaTagPattern = /<meta\b[^>]*>/gi;
   let match: RegExpExecArray | null;
@@ -235,7 +251,9 @@ function readHeadingCandidates(html: string): Candidate[] {
 }
 
 function normalizeJsonString(value: string) {
-  return normalizeText(decodeHtmlEntities(decodeEscapedUnicode(stripHtmlTags(value))));
+  return normalizeText(
+    decodeHtmlEntities(decodeEscapedUnicode(stripHtmlTags(value))),
+  );
 }
 
 function collectJsonValues(
@@ -269,14 +287,26 @@ function collectJsonValues(
   if (typeof value === "object") {
     for (const [objectKey, objectValue] of Object.entries(value)) {
       if (keys.some((key) => key.toLowerCase() === objectKey.toLowerCase())) {
-        collectJsonValues(objectValue, keys, `${source}:${objectKey}`, candidates, depth + 1);
+        collectJsonValues(
+          objectValue,
+          keys,
+          `${source}:${objectKey}`,
+          candidates,
+          depth + 1,
+        );
         continue;
       }
 
       if (
-        ["props", "pageProps", "data", "topic", "thread", "post", "result"].includes(
-          objectKey,
-        )
+        [
+          "props",
+          "pageProps",
+          "data",
+          "topic",
+          "thread",
+          "post",
+          "result",
+        ].includes(objectKey)
       ) {
         collectJsonValues(objectValue, keys, source, candidates, depth + 1);
       }
@@ -284,7 +314,11 @@ function collectJsonValues(
   }
 }
 
-function extractJsonScriptCandidates(html: string, keys: string[], source: string) {
+function extractJsonScriptCandidates(
+  html: string,
+  keys: string[],
+  source: string,
+) {
   const candidates: Candidate[] = [];
   const scriptPattern = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
   let match: RegExpExecArray | null;
@@ -292,7 +326,11 @@ function extractJsonScriptCandidates(html: string, keys: string[], source: strin
   while ((match = scriptPattern.exec(html))) {
     const scriptText = decodeHtmlEntities(match[1] || "").trim();
 
-    if (!scriptText || scriptText.length > 900_000 || !/[\[{]/.test(scriptText)) {
+    if (
+      !scriptText ||
+      scriptText.length > 900_000 ||
+      !/[\[{]/.test(scriptText)
+    ) {
       continue;
     }
 
@@ -307,14 +345,24 @@ function extractJsonScriptCandidates(html: string, keys: string[], source: strin
   return candidates;
 }
 
-function extractQuotedJsonCandidates(payload: string, keys: string[], source: string) {
+function extractQuotedJsonCandidates(
+  payload: string,
+  keys: string[],
+  source: string,
+) {
   const candidates: Candidate[] = [];
 
   for (const key of keys) {
     const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const patterns = [
-      new RegExp(`"${escapedKey}"\\s*:\\s*"((?:\\\\.|[^"]) {4,900})"`.replace(" ", ""), "gi"),
-      new RegExp(`&quot;${escapedKey}&quot;\\s*:\\s*&quot;([^&]{4,900})&quot;`, "gi"),
+      new RegExp(
+        `"${escapedKey}"\\s*:\\s*"((?:\\\\.|[^"]) {4,900})"`.replace(" ", ""),
+        "gi",
+      ),
+      new RegExp(
+        `&quot;${escapedKey}&quot;\\s*:\\s*&quot;([^&]{4,900})&quot;`,
+        "gi",
+      ),
     ];
 
     for (const pattern of patterns) {
@@ -322,7 +370,10 @@ function extractQuotedJsonCandidates(payload: string, keys: string[], source: st
 
       while ((match = pattern.exec(payload))) {
         if (match[1]) {
-          candidates.push({ value: normalizeJsonString(match[1]), source: `${source}:${key}` });
+          candidates.push({
+            value: normalizeJsonString(match[1]),
+            source: `${source}:${key}`,
+          });
         }
       }
     }
@@ -338,7 +389,10 @@ function textBlocksFromHtml(html: string) {
       .replace(/<style[\s\S]*?<\/style>/gi, " ")
       .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
       .replace(/<svg[\s\S]*?<\/svg>/gi, " ")
-      .replace(/<\/?(?:p|div|section|article|main|header|footer|h[1-6]|li|br|blockquote)[^>]*>/gi, "\n")
+      .replace(
+        /<\/?(?:p|div|section|article|main|header|footer|h[1-6]|li|br|blockquote)[^>]*>/gi,
+        "\n",
+      )
       .replace(/<[^>]+>/g, " "),
   )
     .split(/\n+/g)
@@ -385,6 +439,168 @@ function cleanPantipContentText(value: string) {
       .replace(/\s\/\s/g, " ")
       .replace(/\b[A-Z][a-z]+\s+[A-Z][a-z]+\b/g, " "),
   );
+}
+
+function hasCommentMarker(value: string) {
+  const normalized = normalizeText(value).toLowerCase();
+
+  return PANTIP_COMMENT_MARKERS.some((marker) =>
+    normalized.includes(marker.toLowerCase()),
+  );
+}
+
+function removeTextAfterCommentMarkers(value: string) {
+  const lowerValue = value.toLowerCase();
+  const markerIndexes = PANTIP_COMMENT_MARKERS.map((marker) =>
+    lowerValue.indexOf(marker.toLowerCase()),
+  ).filter((index) => index >= 0);
+
+  if (markerIndexes.length === 0) {
+    return value;
+  }
+
+  return value.slice(0, Math.min(...markerIndexes));
+}
+
+function findTitleIndexInText(value: string, title: string) {
+  const normalizedValue = normalizeText(value);
+  const normalizedTitle = normalizeText(title);
+
+  if (!normalizedTitle) {
+    return -1;
+  }
+
+  const exactIndex = normalizedValue.indexOf(normalizedTitle);
+
+  if (exactIndex >= 0) {
+    return exactIndex;
+  }
+
+  const titleWords = normalizedTitle
+    .split(/\s+/g)
+    .filter((word) => countThaiCharacters(word) >= 2 || word.length >= 4);
+
+  for (
+    let wordCount = Math.min(titleWords.length, 8);
+    wordCount >= 3;
+    wordCount -= 1
+  ) {
+    const probe = titleWords.slice(0, wordCount).join(" ");
+    const probeIndex = normalizedValue.indexOf(probe);
+
+    if (probeIndex >= 0) {
+      return probeIndex;
+    }
+  }
+
+  const thaiProbe = (
+    normalizedTitle.match(/[ก-๙][ก-๙\s]{11,}/)?.[0] || ""
+  ).trim();
+
+  if (thaiProbe.length >= 12) {
+    return normalizedValue.indexOf(thaiProbe.slice(0, 24));
+  }
+
+  return -1;
+}
+
+function removeTitleFromStart(value: string, title: string) {
+  let cleaned = normalizeText(value);
+  const normalizedTitle = normalizeText(title);
+
+  if (!normalizedTitle) {
+    return cleaned;
+  }
+
+  if (cleaned.startsWith(normalizedTitle)) {
+    cleaned = cleaned.slice(normalizedTitle.length).trim();
+  }
+
+  return cleaned.replace(/^[-–—:|\s]+/, "").trim();
+}
+
+function extractTopicBodyStartCandidates(
+  payload: string,
+  title: string,
+  source: string,
+): Candidate[] {
+  const normalizedTitle = normalizeText(title);
+
+  if (!normalizedTitle) {
+    return [];
+  }
+
+  const textWithBreaks = decodeHtmlEntities(
+    decodeEscapedUnicode(
+      payload
+        .replace(/<head[\s\S]*?<\/head>/gi, " ")
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+        .replace(/<svg[\s\S]*?<\/svg>/gi, " ")
+        .replace(
+          /<\/(?:p|div|section|article|main|header|footer|h[1-6]|li|br|blockquote)>/gi,
+          "\n",
+        )
+        .replace(
+          /<(?:p|div|section|article|main|header|footer|h[1-6]|li|br|blockquote)[^>]*>/gi,
+          "\n",
+        )
+        .replace(/<[^>]+>/g, " "),
+    ),
+  );
+  const plainText = normalizeText(textWithBreaks);
+  const titleIndex = findTitleIndexInText(plainText, normalizedTitle);
+
+  if (titleIndex < 0) {
+    return [];
+  }
+
+  const afterTitle = plainText.slice(titleIndex + normalizedTitle.length);
+  const beforeComments = removeTextAfterCommentMarkers(afterTitle);
+  const topicBodyStart = removeTitleFromStart(
+    cleanPantipContentText(beforeComments),
+    normalizedTitle,
+  );
+
+  if (
+    !topicBodyStart ||
+    topicBodyStart.length < 4 ||
+    hasCommentMarker(topicBodyStart) ||
+    hasLayoutNoise(topicBodyStart) ||
+    isGenericPantipShell(topicBodyStart) ||
+    countThaiCharacters(topicBodyStart) < 4
+  ) {
+    return [];
+  }
+
+  return [
+    {
+      value: topicBodyStart,
+      source: `${source}:topic-body-start`,
+    },
+  ];
+}
+
+function pickFirstTopicBodyStart(candidates: Candidate[], maxLength: number) {
+  for (const candidate of candidates) {
+    const value = cleanPantipContentText(candidate.value);
+
+    if (
+      value &&
+      countThaiCharacters(value) >= 4 &&
+      !hasCommentMarker(value) &&
+      !hasLayoutNoise(value) &&
+      !isGenericPantipShell(value)
+    ) {
+      return {
+        value: truncateText(value, maxLength),
+        source: candidate.source,
+      };
+    }
+  }
+
+  return null;
 }
 
 function countThaiCharacters(value: string) {
@@ -436,7 +652,8 @@ function isUsefulPantipContent(value: string, minimumThaiCharacters: number) {
     return false;
   }
 
-  const digitRatio = normalized.length > 0 ? countDigits(normalized) / normalized.length : 0;
+  const digitRatio =
+    normalized.length > 0 ? countDigits(normalized) / normalized.length : 0;
 
   return digitRatio <= 0.22;
 }
@@ -446,11 +663,17 @@ function scoreContentCandidate(value: string) {
   const normalized = cleanPantipContentText(value);
   const thaiCharacters = countThaiCharacters(normalized);
   const lengthScore = Math.min(normalized.length, 320) / 20;
-  const questionBonus = /[?？]|ไหม|ยังไง|ทำไม|ควร|หรือ|ใคร|อะไร/.test(normalized) ? 18 : 0;
+  const questionBonus = /[?？]|ไหม|ยังไง|ทำไม|ควร|หรือ|ใคร|อะไร/.test(
+    normalized,
+  )
+    ? 18
+    : 0;
   const noisePenalty = hasLayoutNoise(raw) ? 500 : 0;
   const digitPenalty = countDigits(normalized) * 1.6;
 
-  return thaiCharacters + lengthScore + questionBonus - noisePenalty - digitPenalty;
+  return (
+    thaiCharacters + lengthScore + questionBonus - noisePenalty - digitPenalty
+  );
 }
 
 function pickBestPantipContent(
@@ -480,30 +703,73 @@ function pickBestPantipContent(
   };
 }
 
-function extractMetadataCandidatesFromPayload(payload: string, source: string) {
+function extractMetadataCandidatesFromPayload(
+  payload: string,
+  source: string,
+  titleForTopicBody = "",
+) {
   const titleCandidates: Candidate[] = [];
   const excerptCandidates: Candidate[] = [];
+  const topicBodyCandidates: Candidate[] = [];
 
   for (const key of ["og:title", "twitter:title"]) {
-    titleCandidates.push(...readMetaCandidates(payload, key, `${source}:${key}`));
+    titleCandidates.push(
+      ...readMetaCandidates(payload, key, `${source}:${key}`),
+    );
   }
 
   for (const key of ["og:description", "twitter:description", "description"]) {
-    excerptCandidates.push(...readMetaCandidates(payload, key, `${source}:${key}`));
+    excerptCandidates.push(
+      ...readMetaCandidates(payload, key, `${source}:${key}`),
+    );
   }
 
   titleCandidates.push(...readTitleCandidates(payload));
   titleCandidates.push(...readHeadingCandidates(payload));
-  titleCandidates.push(...extractJsonScriptCandidates(payload, TITLE_KEYS, `${source}:script-json`));
-  titleCandidates.push(...extractQuotedJsonCandidates(payload, TITLE_KEYS, `${source}:quoted-json`));
-  excerptCandidates.push(...extractJsonScriptCandidates(payload, EXCERPT_KEYS, `${source}:script-json`));
-  excerptCandidates.push(...extractQuotedJsonCandidates(payload, EXCERPT_KEYS, `${source}:quoted-json`));
+  titleCandidates.push(
+    ...extractJsonScriptCandidates(
+      payload,
+      TITLE_KEYS,
+      `${source}:script-json`,
+    ),
+  );
+  titleCandidates.push(
+    ...extractQuotedJsonCandidates(
+      payload,
+      TITLE_KEYS,
+      `${source}:quoted-json`,
+    ),
+  );
+  excerptCandidates.push(
+    ...extractJsonScriptCandidates(
+      payload,
+      EXCERPT_KEYS,
+      `${source}:script-json`,
+    ),
+  );
+  excerptCandidates.push(
+    ...extractQuotedJsonCandidates(
+      payload,
+      EXCERPT_KEYS,
+      `${source}:quoted-json`,
+    ),
+  );
   excerptCandidates.push(...extractVisibleTextCandidates(payload, source));
 
-  return { titleCandidates, excerptCandidates };
+  if (titleForTopicBody) {
+    topicBodyCandidates.push(
+      ...extractTopicBodyStartCandidates(payload, titleForTopicBody, source),
+    );
+  }
+
+  return { titleCandidates, excerptCandidates, topicBodyCandidates };
 }
 
-function buildFallbackCardHtml(input: { title: string; excerpt: string; sourceUrl: string }) {
+function buildFallbackCardHtml(input: {
+  title: string;
+  excerpt: string;
+  sourceUrl: string;
+}) {
   const safeExcerpt = input.excerpt || "อ่านรายละเอียดต่อได้ที่ลิงก์ต้นทาง";
   const displayUrl = input.sourceUrl.replace(/^https?:\/\//i, "");
 
@@ -694,7 +960,9 @@ async function readBrowserPayloads(sourceUrl: string, topicId: string) {
       if (
         networkPayloads.length >= 18 ||
         !url.includes("pantip") ||
-        (!contentType.includes("json") && !contentType.includes("text") && !contentType.includes("html"))
+        (!contentType.includes("json") &&
+          !contentType.includes("text") &&
+          !contentType.includes("html"))
       ) {
         return;
       }
@@ -713,10 +981,17 @@ async function readBrowserPayloads(sourceUrl: string, topicId: string) {
         .catch(() => undefined);
     });
 
-    await page.goto(sourceUrl, { waitUntil: "domcontentloaded", timeout: 24_000 });
-    await page.waitForSelector("body", { timeout: 8_000 }).catch(() => undefined);
+    await page.goto(sourceUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: 24_000,
+    });
     await page
-      .waitForFunction(() => document.body.innerText.trim().length > 80, { timeout: 8_000 })
+      .waitForSelector("body", { timeout: 8_000 })
+      .catch(() => undefined);
+    await page
+      .waitForFunction(() => document.body.innerText.trim().length > 80, {
+        timeout: 8_000,
+      })
       .catch(() => undefined);
     await new Promise((resolve) => setTimeout(resolve, 2_000));
 
@@ -731,17 +1006,22 @@ async function readBrowserPayloads(sourceUrl: string, topicId: string) {
         .join("\n");
       const scripts = Array.from(document.scripts)
         .map((script) => script.textContent || "")
-        .filter((text) => text.includes("topic") || text.includes("title") || /[ก-๙]/.test(text))
+        .filter(
+          (text) =>
+            text.includes("topic") ||
+            text.includes("title") ||
+            /[ก-๙]/.test(text),
+        )
         .slice(0, 8)
         .join("\n");
 
       return [
+        headings,
+        document.body.innerText,
         document.title,
         readMeta("meta[property='og:title']"),
         readMeta("meta[property='og:description']"),
         readMeta("meta[name='description']"),
-        headings,
-        document.body.innerText,
         scripts,
       ].join("\n");
     });
@@ -757,52 +1037,52 @@ async function fetchPantipMetadata(sourceUrl: string): Promise<PantipMetadata> {
   const payloads: { payload: string; source: string }[] = [];
 
   try {
-    payloads.push({ payload: await fetchPantipHtml(sourceUrl), source: "fetch-html" });
-  } catch (error) {
-    console.info("[pantip-preview] direct fetch failed, trying browser extraction", {
-      error: error instanceof Error ? error.message : String(error),
+    payloads.push({
+      payload: await fetchPantipHtml(sourceUrl),
+      source: "fetch-html",
     });
+  } catch (error) {
+    console.info(
+      "[pantip-preview] direct fetch failed, trying browser extraction",
+      {
+        error: error instanceof Error ? error.message : String(error),
+      },
+    );
   }
 
-  const fetchCandidates = payloads.flatMap(({ payload, source }) => [
-    ...extractMetadataCandidatesFromPayload(payload, source).titleCandidates,
-    ...extractMetadataCandidatesFromPayload(payload, source).excerptCandidates,
-  ]);
-
   const titleCandidates: Candidate[] = [];
-  const excerptCandidates: Candidate[] = [];
+  const fallbackExcerptCandidates: Candidate[] = [];
 
   for (const payloadInfo of payloads) {
-    const extracted = extractMetadataCandidatesFromPayload(payloadInfo.payload, payloadInfo.source);
+    const extracted = extractMetadataCandidatesFromPayload(
+      payloadInfo.payload,
+      payloadInfo.source,
+    );
     titleCandidates.push(...extracted.titleCandidates);
-    excerptCandidates.push(...extracted.excerptCandidates);
+    fallbackExcerptCandidates.push(...extracted.excerptCandidates);
   }
 
   let title = pickBestPantipContent(titleCandidates, {
     minimumThaiCharacters: 6,
     maxLength: 150,
   });
-  let excerpt = pickBestPantipContent(excerptCandidates, {
-    minimumThaiCharacters: 12,
-    maxLength: 300,
-  });
 
-  if (!title || (!excerpt && fetchCandidates.length === 0)) {
+  if (!title) {
     const browserPayloads = await readBrowserPayloads(sourceUrl, topicId);
 
     for (const [index, payload] of browserPayloads.entries()) {
-      const extracted = extractMetadataCandidatesFromPayload(payload, `browser:${index}`);
+      payloads.push({ payload, source: `browser:${index}` });
+      const extracted = extractMetadataCandidatesFromPayload(
+        payload,
+        `browser:${index}`,
+      );
       titleCandidates.push(...extracted.titleCandidates);
-      excerptCandidates.push(...extracted.excerptCandidates);
+      fallbackExcerptCandidates.push(...extracted.excerptCandidates);
     }
 
     title = pickBestPantipContent(titleCandidates, {
       minimumThaiCharacters: 6,
       maxLength: 150,
-    });
-    excerpt = pickBestPantipContent(excerptCandidates, {
-      minimumThaiCharacters: 12,
-      maxLength: 300,
     });
   }
 
@@ -812,26 +1092,81 @@ async function fetchPantipMetadata(sourceUrl: string): Promise<PantipMetadata> {
     );
   }
 
+  const topicBodyCandidates: Candidate[] = [];
+
+  for (const payloadInfo of payloads) {
+    const extracted = extractMetadataCandidatesFromPayload(
+      payloadInfo.payload,
+      payloadInfo.source,
+      title.value,
+    );
+    topicBodyCandidates.push(...extracted.topicBodyCandidates);
+  }
+
+  let topicBodyStart = pickFirstTopicBodyStart(topicBodyCandidates, 520);
+
+  if (!topicBodyStart) {
+    const browserPayloads = await readBrowserPayloads(sourceUrl, topicId);
+
+    for (const [index, payload] of browserPayloads.entries()) {
+      const source = `browser-retry:${index}`;
+      const extracted = extractMetadataCandidatesFromPayload(
+        payload,
+        source,
+        title.value,
+      );
+      topicBodyCandidates.push(...extracted.topicBodyCandidates);
+      fallbackExcerptCandidates.push(...extracted.excerptCandidates);
+    }
+
+    topicBodyStart = pickFirstTopicBodyStart(topicBodyCandidates, 520);
+  }
+
+  const metadataFallbackExcerptCandidates = fallbackExcerptCandidates.filter(
+    (candidate) =>
+      [
+        "fetch-html:og:description",
+        "fetch-html:twitter:description",
+        "fetch-html:description",
+      ].includes(candidate.source),
+  );
+  const fallbackExcerpt = pickBestPantipContent(
+    metadataFallbackExcerptCandidates,
+    {
+      minimumThaiCharacters: 8,
+      maxLength: 300,
+    },
+  );
   const safeExcerpt =
-    excerpt?.value && !excerpt.value.includes(title.value) && excerpt.value !== title.value
-      ? excerpt.value
-      : "อ่านรายละเอียดต่อได้ที่ลิงก์ต้นทาง";
+    topicBodyStart?.value ||
+    (fallbackExcerpt?.value &&
+    !fallbackExcerpt.value.includes(title.value) &&
+    fallbackExcerpt.value !== title.value &&
+    !hasCommentMarker(fallbackExcerpt.value)
+      ? fallbackExcerpt.value
+      : "อ่านรายละเอียดต่อได้ที่ลิงก์ต้นทาง");
 
   console.info("[pantip-preview] metadata extracted", {
     titleSource: title.source,
-    excerptSource: excerpt?.source || "fallback",
+    excerptSource:
+      topicBodyStart?.source || fallbackExcerpt?.source || "fallback",
     titleLength: title.value.length,
     excerptLength: safeExcerpt.length,
+    usedStrictTopicBodyStart: Boolean(topicBodyStart),
   });
 
   return {
     title: title.value,
     excerpt: safeExcerpt,
-    source: `${title.source}/${excerpt?.source || "fallback"}`,
+    source: `${title.source}/${topicBodyStart?.source || fallbackExcerpt?.source || "fallback"}`,
   };
 }
 
-async function renderReadableCardImage(input: { title: string; excerpt: string; sourceUrl: string }) {
+async function renderReadableCardImage(input: {
+  title: string;
+  excerpt: string;
+  sourceUrl: string;
+}) {
   const browser = await puppeteer.launch({
     args: [
       ...chromium.args,
@@ -874,7 +1209,9 @@ async function renderReadableCardImage(input: { title: string; excerpt: string; 
 
 export async function createPantipPreviewSnapshot(sourceUrl: string) {
   const metadata = await fetchPantipMetadata(sourceUrl);
-  const warnings = detectPantipRiskWarnings(`${metadata.title}\n${metadata.excerpt}`);
+  const warnings = detectPantipRiskWarnings(
+    `${metadata.title}\n${metadata.excerpt}`,
+  );
   const screenshotBuffer = await renderReadableCardImage({
     title: metadata.title,
     excerpt: metadata.excerpt,

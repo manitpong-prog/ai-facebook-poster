@@ -418,7 +418,6 @@ function stripNewsBotLeadIn(content: string, sourceName: string) {
 
 function buildNewsFallbackCaption(input: GenerateNewsSourcePostInput) {
   const title = normalizeThaiWhitespace(input.title);
-  const modeSettings = getNewsModeSettings(input.postMode);
   const summarySource = normalizeThaiWhitespace(input.summary || input.articleText || title);
   const maxSummaryLength = input.postMode === "story" ? 420 : input.postMode === "sports" ? 320 : 240;
   const summary = summarySource.length > maxSummaryLength
