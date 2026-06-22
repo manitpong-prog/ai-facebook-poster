@@ -516,7 +516,7 @@ function extractDisplayPostStoryCandidates(payload: string, source: string) {
     if (text) {
       candidates.push({
         value: text,
-        source: `${source}:display-post-story-wrapper:dom`,
+        source: `${source}:display-post-story-wrapper:not-comment:dom`,
       });
     }
   }
@@ -526,11 +526,22 @@ function extractDisplayPostStoryCandidates(payload: string, source: string) {
   let wrapperMatch: RegExpExecArray | null;
 
   while ((wrapperMatch = displayPostStoryWrapperPattern.exec(payload))) {
+    const openingTag = wrapperMatch[0] || "";
+
+    // Pantip comments also use display-post-story, but their story wrapper has
+    // the extra comment-wrapper class. Do not reject based on arbitrary words in
+    // the story text itself, because the main topic can naturally mention words
+    // like "ความคิดเห็น". Reject only by structural comment markers.
+    if (/\bcomment-wrapper\b/i.test(openingTag)) {
+      continue;
+    }
+
     const blockHtml = extractBalancedDivHtml(payload, wrapperMatch.index);
 
     if (
-      /\bdisplay-post-wrapper-inner\b/i.test(blockHtml) ||
-      /\bcomment\b|ความคิดเห็นที่|แสดงความคิดเห็น|ตอบกลับ/i.test(blockHtml)
+      /<span\b[^>]*class=(?:"[^"]*\bdisplay-post-number\b[^"]*"|'[^']*\bdisplay-post-number\b[^']*')[^>]*>\s*ความคิดเห็นที่/i.test(
+        blockHtml,
+      )
     ) {
       continue;
     }
@@ -543,7 +554,7 @@ function extractDisplayPostStoryCandidates(payload: string, source: string) {
     if (text) {
       candidates.push({
         value: text,
-        source: `${source}:display-post-story-wrapper:html`,
+        source: `${source}:display-post-story-wrapper:not-comment:html`,
       });
     }
   }
@@ -554,7 +565,12 @@ function extractDisplayPostStoryCandidates(payload: string, source: string) {
 function pickFirstTopicBodyStart(candidates: Candidate[], maxLength: number) {
   for (const candidate of candidates) {
     const rawValue = cleanPantipContentText(candidate.value);
-    const value = cleanPantipContentText(removeTextAfterCommentMarkers(rawValue));
+    const isStrictMainStory = candidate.source.includes(
+      "display-post-story-wrapper:not-comment",
+    );
+    const value = isStrictMainStory
+      ? rawValue
+      : cleanPantipContentText(removeTextAfterCommentMarkers(rawValue));
 
     if (
       value &&
@@ -971,9 +987,31 @@ async function readBrowserPayloads(sourceUrl: string, topicId: string) {
         return element instanceof HTMLMetaElement ? element.content || "" : "";
       }
 
-      const mainPostStoryElement = document.querySelector(
-        ".display-post-story-wrapper .display-post-story",
-      );
+      const mainPostStoryElement = Array.from(
+        document.querySelectorAll(
+          ".display-post-story-wrapper:not(.comment-wrapper) .display-post-story",
+        ),
+      ).find((element) => {
+        if (!(element instanceof HTMLElement)) {
+          return false;
+        }
+
+        if (
+          element.closest(
+            ".section-comment,.comment-wrapper,[id^='comment-'],[id^='reply-']",
+          )
+        ) {
+          return false;
+        }
+
+        const wrapperInner = element.closest(".display-post-wrapper-inner");
+
+        if (wrapperInner?.querySelector(".display-post-number")) {
+          return false;
+        }
+
+        return (element.textContent || "").trim().length > 0;
+      });
       const displayPostStoryText = mainPostStoryElement?.textContent || "";
       const displayPostStoryHtml = mainPostStoryElement?.outerHTML || "";
       const headings = Array.from(document.querySelectorAll("h1,h2,h3"))

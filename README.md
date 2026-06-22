@@ -491,3 +491,7 @@ Pantip card detail now prioritizes `div.display-post-story` as the source of the
 - Pantip card details now prefer `.display-post-story-wrapper .display-post-story` as the main topic body.
 - The extractor no longer scans generic `.display-post-story` elements because Pantip comments can use the same class.
 - If the main topic body cannot be identified, the card falls back to safe metadata/title text instead of using comment text.
+
+## Pantip main-topic extraction detail
+
+Pantip can use `.display-post-story-wrapper` and `.display-post-story` for both the main topic and comments. The extractor therefore treats `.display-post-story-wrapper.comment-wrapper`, `.section-comment`, `comment-*` / `reply-*` containers, and `.display-post-number` comment markers as comment-only structures and excludes them from card details.
