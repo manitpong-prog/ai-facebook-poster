@@ -507,7 +507,7 @@ function extractDisplayPostStoryCandidates(payload: string, source: string) {
   const candidates: Candidate[] = [];
 
   const markerPattern =
-    /__AI_DISPLAY_POST_STORY_START__([\s\S]*?)__AI_DISPLAY_POST_STORY_END__/gi;
+    /__AI_MAIN_POST_STORY_START__([\s\S]*?)__AI_MAIN_POST_STORY_END__/gi;
   let markerMatch: RegExpExecArray | null;
 
   while ((markerMatch = markerPattern.exec(payload))) {
@@ -516,148 +516,39 @@ function extractDisplayPostStoryCandidates(payload: string, source: string) {
     if (text) {
       candidates.push({
         value: text,
-        source: `${source}:display-post-story:dom`,
+        source: `${source}:display-post-story-wrapper:dom`,
       });
     }
   }
 
-  const displayPostStoryPattern =
-    /<div\b[^>]*class=(?:"[^"]*\bdisplay-post-story\b[^"]*"|'[^']*\bdisplay-post-story\b[^']*')[^>]*>/gi;
-  let match: RegExpExecArray | null;
+  const displayPostStoryWrapperPattern =
+    /<div\b[^>]*class=(?:"[^"]*\bdisplay-post-story-wrapper\b[^"]*"|'[^']*\bdisplay-post-story-wrapper\b[^']*')[^>]*>/gi;
+  let wrapperMatch: RegExpExecArray | null;
 
-  while ((match = displayPostStoryPattern.exec(payload))) {
-    const blockHtml = extractBalancedDivHtml(payload, match.index);
-    const text = cleanPantipContentText(blockHtml);
+  while ((wrapperMatch = displayPostStoryWrapperPattern.exec(payload))) {
+    const blockHtml = extractBalancedDivHtml(payload, wrapperMatch.index);
+
+    if (
+      /\bdisplay-post-wrapper-inner\b/i.test(blockHtml) ||
+      /\bcomment\b|ความคิดเห็นที่|แสดงความคิดเห็น|ตอบกลับ/i.test(blockHtml)
+    ) {
+      continue;
+    }
+
+    const storyMatch = blockHtml.match(
+      /<div\b[^>]*class=(?:"[^"]*\bdisplay-post-story\b[^"]*"|'[^']*\bdisplay-post-story\b[^']*')[^>]*>[\s\S]*?<\/div>/i,
+    );
+    const text = cleanPantipContentText(storyMatch?.[0] || blockHtml);
 
     if (text) {
       candidates.push({
         value: text,
-        source: `${source}:display-post-story:html`,
+        source: `${source}:display-post-story-wrapper:html`,
       });
     }
   }
 
   return candidates;
-}
-
-function findTitleIndexInText(value: string, title: string) {
-  const normalizedValue = normalizeText(value);
-  const normalizedTitle = normalizeText(title);
-
-  if (!normalizedTitle) {
-    return -1;
-  }
-
-  const exactIndex = normalizedValue.indexOf(normalizedTitle);
-
-  if (exactIndex >= 0) {
-    return exactIndex;
-  }
-
-  const titleWords = normalizedTitle
-    .split(/\s+/g)
-    .filter((word) => countThaiCharacters(word) >= 2 || word.length >= 4);
-
-  for (
-    let wordCount = Math.min(titleWords.length, 8);
-    wordCount >= 3;
-    wordCount -= 1
-  ) {
-    const probe = titleWords.slice(0, wordCount).join(" ");
-    const probeIndex = normalizedValue.indexOf(probe);
-
-    if (probeIndex >= 0) {
-      return probeIndex;
-    }
-  }
-
-  const thaiProbe = (
-    normalizedTitle.match(/[ก-๙][ก-๙\s]{11,}/)?.[0] || ""
-  ).trim();
-
-  if (thaiProbe.length >= 12) {
-    return normalizedValue.indexOf(thaiProbe.slice(0, 24));
-  }
-
-  return -1;
-}
-
-function removeTitleFromStart(value: string, title: string) {
-  let cleaned = normalizeText(value);
-  const normalizedTitle = normalizeText(title);
-
-  if (!normalizedTitle) {
-    return cleaned;
-  }
-
-  if (cleaned.startsWith(normalizedTitle)) {
-    cleaned = cleaned.slice(normalizedTitle.length).trim();
-  }
-
-  return cleaned.replace(/^[-–—:|\s]+/, "").trim();
-}
-
-function extractTopicBodyStartCandidates(
-  payload: string,
-  title: string,
-  source: string,
-): Candidate[] {
-  const normalizedTitle = normalizeText(title);
-
-  if (!normalizedTitle) {
-    return [];
-  }
-
-  const textWithBreaks = decodeHtmlEntities(
-    decodeEscapedUnicode(
-      payload
-        .replace(/<head[\s\S]*?<\/head>/gi, " ")
-        .replace(/<script[\s\S]*?<\/script>/gi, " ")
-        .replace(/<style[\s\S]*?<\/style>/gi, " ")
-        .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
-        .replace(/<svg[\s\S]*?<\/svg>/gi, " ")
-        .replace(
-          /<\/(?:p|div|section|article|main|header|footer|h[1-6]|li|br|blockquote)>/gi,
-          "\n",
-        )
-        .replace(
-          /<(?:p|div|section|article|main|header|footer|h[1-6]|li|br|blockquote)[^>]*>/gi,
-          "\n",
-        )
-        .replace(/<[^>]+>/g, " "),
-    ),
-  );
-  const plainText = normalizeText(textWithBreaks);
-  const titleIndex = findTitleIndexInText(plainText, normalizedTitle);
-
-  if (titleIndex < 0) {
-    return [];
-  }
-
-  const afterTitle = plainText.slice(titleIndex + normalizedTitle.length);
-  const beforeComments = removeTextAfterCommentMarkers(afterTitle);
-  const topicBodyStart = removeTitleFromStart(
-    cleanPantipContentText(beforeComments),
-    normalizedTitle,
-  );
-
-  if (
-    !topicBodyStart ||
-    topicBodyStart.length < 4 ||
-    hasCommentMarker(topicBodyStart) ||
-    hasLayoutNoise(topicBodyStart) ||
-    isGenericPantipShell(topicBodyStart) ||
-    countThaiCharacters(topicBodyStart) < 4
-  ) {
-    return [];
-  }
-
-  return [
-    {
-      value: topicBodyStart,
-      source: `${source}:topic-body-start`,
-    },
-  ];
 }
 
 function pickFirstTopicBodyStart(candidates: Candidate[], maxLength: number) {
@@ -836,11 +727,10 @@ function extractMetadataCandidatesFromPayload(
 
   topicBodyCandidates.push(...extractDisplayPostStoryCandidates(payload, source));
 
-  if (titleForTopicBody) {
-    topicBodyCandidates.push(
-      ...extractTopicBodyStartCandidates(payload, titleForTopicBody, source),
-    );
-  }
+  // Use only the main topic story container for card details.
+  // Do not scan the whole page after the title here, because Pantip comments and
+  // navigation text can appear after the title and may be accidentally selected.
+  void titleForTopicBody;
 
   return { titleCandidates, excerptCandidates, topicBodyCandidates };
 }
@@ -1081,10 +971,11 @@ async function readBrowserPayloads(sourceUrl: string, topicId: string) {
         return element instanceof HTMLMetaElement ? element.content || "" : "";
       }
 
-      const displayPostStoryText =
-        document.querySelector(".display-post-story")?.textContent || "";
-      const displayPostStoryHtml =
-        document.querySelector(".display-post-story")?.outerHTML || "";
+      const mainPostStoryElement = document.querySelector(
+        ".display-post-story-wrapper .display-post-story",
+      );
+      const displayPostStoryText = mainPostStoryElement?.textContent || "";
+      const displayPostStoryHtml = mainPostStoryElement?.outerHTML || "";
       const headings = Array.from(document.querySelectorAll("h1,h2,h3"))
         .map((element) => element.textContent || "")
         .join("\n");
@@ -1100,9 +991,9 @@ async function readBrowserPayloads(sourceUrl: string, topicId: string) {
         .join("\n");
 
       return [
-        "__AI_DISPLAY_POST_STORY_START__",
+        "__AI_MAIN_POST_STORY_START__",
         displayPostStoryText,
-        "__AI_DISPLAY_POST_STORY_END__",
+        "__AI_MAIN_POST_STORY_END__",
         displayPostStoryHtml,
         headings,
         document.body.innerText,

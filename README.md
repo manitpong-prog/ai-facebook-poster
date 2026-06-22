@@ -485,3 +485,9 @@ Pantip captions are intentionally short. The caption prompt now treats the extra
 
 ### Pantip topic body extraction note
 Pantip card detail now prioritizes `div.display-post-story` as the source of the original topic body before falling back to safer metadata-based extraction. This helps prevent comments, menus, and footer text from appearing in generated cards.
+
+
+## Pantip source extraction note
+- Pantip card details now prefer `.display-post-story-wrapper .display-post-story` as the main topic body.
+- The extractor no longer scans generic `.display-post-story` elements because Pantip comments can use the same class.
+- If the main topic body cannot be identified, the card falls back to safe metadata/title text instead of using comment text.
