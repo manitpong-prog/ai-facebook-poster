@@ -211,7 +211,7 @@ export function PantipSourceClient({
               {loadingState === "preview" ? "กำลังสร้างตัวอย่าง..." : "สร้างตัวอย่างโพสต์"}
             </button>
             <p className="text-xs leading-5 text-slate-500">
-              ระบบจะสร้างภาพการ์ดอ่านง่ายจากหัวข้อ + ต้นข้อความกระทู้ + ลิงก์ต้นทาง โดยไม่ใช้คอมเมนต์ เมนู หรือ footer ของ Pantip
+              ระบบจะสร้างภาพการ์ดอ่านง่ายจากหัวข้อ + รายละเอียดข้อความในกระทู้ + ลิงก์ต้นทาง โดยไม่ใช้เมนูหรือ footer ของ Pantip
             </p>
           </div>
         </div>
@@ -248,7 +248,7 @@ export function PantipSourceClient({
                 <h2 className="text-lg font-semibold">Preview การ์ดกระทู้</h2>
                 <p className="mt-1 text-xs text-slate-500">
                   {preview.imageMode === "readable_card"
-                    ? "ระบบใช้การ์ดอ่านง่ายจากหัวข้อและต้นข้อความกระทู้โดยตรง ไม่ใช้คอมเมนต์หรือภาพหน้าเว็บ Pantip จริง"
+                    ? "ระบบใช้การ์ดอ่านง่ายจากหัวข้อและรายละเอียดข้อความในกระทู้โดยตรง ไม่ใช้ภาพหน้าเว็บ Pantip จริง"
                      : "ระบบจะใช้รูปนี้โพสต์ขึ้น Facebook โดยตรง เป็นภาพการ์ดอ่านง่าย แล้วไม่เก็บรูปไว้ในแอป"}
                 </p>
               </div>
@@ -303,7 +303,7 @@ export function PantipSourceClient({
                   <dd className="mt-1 leading-6 text-slate-200">{preview.title}</dd>
                 </div>
                 <div>
-                  <dt className="text-slate-500">ต้นข้อความกระทู้ที่ใช้ทำการ์ด</dt>
+                  <dt className="text-slate-500">รายละเอียดข้อความในกระทู้</dt>
                   <dd className="mt-1 leading-6 text-slate-300">{preview.excerpt}</dd>
                 </div>
               </dl>

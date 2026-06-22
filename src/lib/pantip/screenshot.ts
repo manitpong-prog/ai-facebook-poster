@@ -53,18 +53,6 @@ const PANTIP_LAYOUT_PHRASES = [
   "Developer",
 ];
 
-const PANTIP_COMMENT_MARKERS = [
-  "ความคิดเห็น",
-  "ความคิดเห็นที่",
-  "แสดงความคิดเห็น",
-  "ตอบกลับ",
-  "ถูกใจ",
-  "สมาชิกหมายเลข",
-  "คอมเมนต์",
-  "comment",
-  "reply",
-];
-
 const TITLE_KEYS = [
   "headline",
   "title",
@@ -200,11 +188,7 @@ function readHtmlAttributes(tag: string) {
   return attrs;
 }
 
-function readMetaCandidates(
-  html: string,
-  key: string,
-  source: string,
-): Candidate[] {
+function readMetaCandidates(html: string, key: string, source: string): Candidate[] {
   const candidates: Candidate[] = [];
   const metaTagPattern = /<meta\b[^>]*>/gi;
   let match: RegExpExecArray | null;
@@ -251,9 +235,7 @@ function readHeadingCandidates(html: string): Candidate[] {
 }
 
 function normalizeJsonString(value: string) {
-  return normalizeText(
-    decodeHtmlEntities(decodeEscapedUnicode(stripHtmlTags(value))),
-  );
+  return normalizeText(decodeHtmlEntities(decodeEscapedUnicode(stripHtmlTags(value))));
 }
 
 function collectJsonValues(
@@ -287,26 +269,14 @@ function collectJsonValues(
   if (typeof value === "object") {
     for (const [objectKey, objectValue] of Object.entries(value)) {
       if (keys.some((key) => key.toLowerCase() === objectKey.toLowerCase())) {
-        collectJsonValues(
-          objectValue,
-          keys,
-          `${source}:${objectKey}`,
-          candidates,
-          depth + 1,
-        );
+        collectJsonValues(objectValue, keys, `${source}:${objectKey}`, candidates, depth + 1);
         continue;
       }
 
       if (
-        [
-          "props",
-          "pageProps",
-          "data",
-          "topic",
-          "thread",
-          "post",
-          "result",
-        ].includes(objectKey)
+        ["props", "pageProps", "data", "topic", "thread", "post", "result"].includes(
+          objectKey,
+        )
       ) {
         collectJsonValues(objectValue, keys, source, candidates, depth + 1);
       }
@@ -314,11 +284,7 @@ function collectJsonValues(
   }
 }
 
-function extractJsonScriptCandidates(
-  html: string,
-  keys: string[],
-  source: string,
-) {
+function extractJsonScriptCandidates(html: string, keys: string[], source: string) {
   const candidates: Candidate[] = [];
   const scriptPattern = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
   let match: RegExpExecArray | null;
@@ -326,11 +292,7 @@ function extractJsonScriptCandidates(
   while ((match = scriptPattern.exec(html))) {
     const scriptText = decodeHtmlEntities(match[1] || "").trim();
 
-    if (
-      !scriptText ||
-      scriptText.length > 900_000 ||
-      !/[\[{]/.test(scriptText)
-    ) {
+    if (!scriptText || scriptText.length > 900_000 || !/[\[{]/.test(scriptText)) {
       continue;
     }
 
@@ -345,24 +307,14 @@ function extractJsonScriptCandidates(
   return candidates;
 }
 
-function extractQuotedJsonCandidates(
-  payload: string,
-  keys: string[],
-  source: string,
-) {
+function extractQuotedJsonCandidates(payload: string, keys: string[], source: string) {
   const candidates: Candidate[] = [];
 
   for (const key of keys) {
     const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const patterns = [
-      new RegExp(
-        `"${escapedKey}"\\s*:\\s*"((?:\\\\.|[^"]) {4,900})"`.replace(" ", ""),
-        "gi",
-      ),
-      new RegExp(
-        `&quot;${escapedKey}&quot;\\s*:\\s*&quot;([^&]{4,900})&quot;`,
-        "gi",
-      ),
+      new RegExp(`"${escapedKey}"\\s*:\\s*"((?:\\\\.|[^"]) {4,900})"`.replace(" ", ""), "gi"),
+      new RegExp(`&quot;${escapedKey}&quot;\\s*:\\s*&quot;([^&]{4,900})&quot;`, "gi"),
     ];
 
     for (const pattern of patterns) {
@@ -370,10 +322,7 @@ function extractQuotedJsonCandidates(
 
       while ((match = pattern.exec(payload))) {
         if (match[1]) {
-          candidates.push({
-            value: normalizeJsonString(match[1]),
-            source: `${source}:${key}`,
-          });
+          candidates.push({ value: normalizeJsonString(match[1]), source: `${source}:${key}` });
         }
       }
     }
@@ -389,10 +338,7 @@ function textBlocksFromHtml(html: string) {
       .replace(/<style[\s\S]*?<\/style>/gi, " ")
       .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
       .replace(/<svg[\s\S]*?<\/svg>/gi, " ")
-      .replace(
-        /<\/?(?:p|div|section|article|main|header|footer|h[1-6]|li|br|blockquote)[^>]*>/gi,
-        "\n",
-      )
+      .replace(/<\/?(?:p|div|section|article|main|header|footer|h[1-6]|li|br|blockquote)[^>]*>/gi, "\n")
       .replace(/<[^>]+>/g, " "),
   )
     .split(/\n+/g)
@@ -439,146 +385,6 @@ function cleanPantipContentText(value: string) {
       .replace(/\s\/\s/g, " ")
       .replace(/\b[A-Z][a-z]+\s+[A-Z][a-z]+\b/g, " "),
   );
-}
-
-function hasCommentMarker(value: string) {
-  const normalized = normalizeText(value).toLowerCase();
-
-  return PANTIP_COMMENT_MARKERS.some((marker) =>
-    normalized.includes(marker.toLowerCase()),
-  );
-}
-
-function removeTextAfterCommentMarkers(value: string) {
-  const lowerValue = value.toLowerCase();
-  const markerIndexes = PANTIP_COMMENT_MARKERS.map((marker) =>
-    lowerValue.indexOf(marker.toLowerCase()),
-  ).filter((index) => index >= 0);
-
-  if (markerIndexes.length === 0) {
-    return value;
-  }
-
-  return value.slice(0, Math.min(...markerIndexes));
-}
-
-function getHtmlTagEndIndex(html: string, startIndex: number) {
-  const tagEndIndex = html.indexOf(">", startIndex);
-
-  return tagEndIndex >= 0 ? tagEndIndex + 1 : -1;
-}
-
-function extractBalancedDivHtml(html: string, startIndex: number) {
-  const firstTagEndIndex = getHtmlTagEndIndex(html, startIndex);
-
-  if (firstTagEndIndex < 0) {
-    return "";
-  }
-
-  const divTagPattern = /<\/?div\b[^>]*>/gi;
-  divTagPattern.lastIndex = startIndex;
-  let depth = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = divTagPattern.exec(html))) {
-    const tag = match[0] || "";
-    const isClosingTag = /^<\/div/i.test(tag);
-    const isSelfClosingTag = /\/>$/.test(tag);
-
-    if (isClosingTag) {
-      depth -= 1;
-
-      if (depth === 0) {
-        return html.slice(startIndex, divTagPattern.lastIndex);
-      }
-
-      continue;
-    }
-
-    if (!isSelfClosingTag) {
-      depth += 1;
-    }
-  }
-
-  return html.slice(startIndex, Math.min(html.length, startIndex + 8_000));
-}
-
-function extractDisplayPostStoryCandidates(payload: string, source: string) {
-  const candidates: Candidate[] = [];
-
-  const markerPattern =
-    /__AI_MAIN_POST_STORY_START__([\s\S]*?)__AI_MAIN_POST_STORY_END__/gi;
-  let markerMatch: RegExpExecArray | null;
-
-  while ((markerMatch = markerPattern.exec(payload))) {
-    const text = cleanPantipContentText(markerMatch[1] || "");
-
-    if (text) {
-      candidates.push({
-        value: text,
-        source: `${source}:exact-status-leftside-story:dom`,
-      });
-    }
-  }
-
-  // Use the exact Pantip topic-body path observed in real pages, with exact class values:
-  // <div class="display-post-status-leftside">
-  //   <div class="display-post-story-wrapper">
-  //     <div class="display-post-story"> ...
-  // Avoid broad .display-post-story scans because comments reuse that class.
-  const exactMainStoryPattern =
-    /<div\b[^>]*class=(?:"display-post-status-leftside"|'display-post-status-leftside')[^>]*>\s*<div\b[^>]*class=(?:"display-post-story-wrapper"|'display-post-story-wrapper')[^>]*>\s*<div\b[^>]*class=(?:"display-post-story"|'display-post-story')[^>]*>/gi;
-  let exactMatch: RegExpExecArray | null;
-
-  while ((exactMatch = exactMainStoryPattern.exec(payload))) {
-    const matchedPath = exactMatch[0] || "";
-    const storyTagOffset = matchedPath.lastIndexOf("<div");
-
-    if (storyTagOffset < 0) {
-      continue;
-    }
-
-    const storyHtml = extractBalancedDivHtml(
-      payload,
-      exactMatch.index + storyTagOffset,
-    );
-    const text = cleanPantipContentText(storyHtml);
-
-    if (text) {
-      candidates.push({
-        value: text,
-        source: `${source}:exact-status-leftside-story:html`,
-      });
-    }
-  }
-
-  return candidates;
-}
-
-function pickFirstTopicBodyStart(candidates: Candidate[], maxLength: number) {
-  for (const candidate of candidates) {
-    const rawValue = cleanPantipContentText(candidate.value);
-    const isStrictMainStory = candidate.source.includes(
-      "exact-status-leftside-story",
-    );
-    const value = isStrictMainStory
-      ? rawValue
-      : cleanPantipContentText(removeTextAfterCommentMarkers(rawValue));
-
-    if (
-      value &&
-      countThaiCharacters(value) >= 4 &&
-      !hasLayoutNoise(value) &&
-      !isGenericPantipShell(value)
-    ) {
-      return {
-        value: truncateText(value, maxLength),
-        source: candidate.source,
-      };
-    }
-  }
-
-  return null;
 }
 
 function countThaiCharacters(value: string) {
@@ -630,8 +436,7 @@ function isUsefulPantipContent(value: string, minimumThaiCharacters: number) {
     return false;
   }
 
-  const digitRatio =
-    normalized.length > 0 ? countDigits(normalized) / normalized.length : 0;
+  const digitRatio = normalized.length > 0 ? countDigits(normalized) / normalized.length : 0;
 
   return digitRatio <= 0.22;
 }
@@ -641,17 +446,11 @@ function scoreContentCandidate(value: string) {
   const normalized = cleanPantipContentText(value);
   const thaiCharacters = countThaiCharacters(normalized);
   const lengthScore = Math.min(normalized.length, 320) / 20;
-  const questionBonus = /[?？]|ไหม|ยังไง|ทำไม|ควร|หรือ|ใคร|อะไร/.test(
-    normalized,
-  )
-    ? 18
-    : 0;
+  const questionBonus = /[?？]|ไหม|ยังไง|ทำไม|ควร|หรือ|ใคร|อะไร/.test(normalized) ? 18 : 0;
   const noisePenalty = hasLayoutNoise(raw) ? 500 : 0;
   const digitPenalty = countDigits(normalized) * 1.6;
 
-  return (
-    thaiCharacters + lengthScore + questionBonus - noisePenalty - digitPenalty
-  );
+  return thaiCharacters + lengthScore + questionBonus - noisePenalty - digitPenalty;
 }
 
 function pickBestPantipContent(
@@ -681,74 +480,30 @@ function pickBestPantipContent(
   };
 }
 
-function extractMetadataCandidatesFromPayload(
-  payload: string,
-  source: string,
-  titleForTopicBody = "",
-) {
+function extractMetadataCandidatesFromPayload(payload: string, source: string) {
   const titleCandidates: Candidate[] = [];
   const excerptCandidates: Candidate[] = [];
-  const topicBodyCandidates: Candidate[] = [];
 
   for (const key of ["og:title", "twitter:title"]) {
-    titleCandidates.push(
-      ...readMetaCandidates(payload, key, `${source}:${key}`),
-    );
+    titleCandidates.push(...readMetaCandidates(payload, key, `${source}:${key}`));
   }
 
   for (const key of ["og:description", "twitter:description", "description"]) {
-    excerptCandidates.push(
-      ...readMetaCandidates(payload, key, `${source}:${key}`),
-    );
+    excerptCandidates.push(...readMetaCandidates(payload, key, `${source}:${key}`));
   }
 
   titleCandidates.push(...readTitleCandidates(payload));
   titleCandidates.push(...readHeadingCandidates(payload));
-  titleCandidates.push(
-    ...extractJsonScriptCandidates(
-      payload,
-      TITLE_KEYS,
-      `${source}:script-json`,
-    ),
-  );
-  titleCandidates.push(
-    ...extractQuotedJsonCandidates(
-      payload,
-      TITLE_KEYS,
-      `${source}:quoted-json`,
-    ),
-  );
-  excerptCandidates.push(
-    ...extractJsonScriptCandidates(
-      payload,
-      EXCERPT_KEYS,
-      `${source}:script-json`,
-    ),
-  );
-  excerptCandidates.push(
-    ...extractQuotedJsonCandidates(
-      payload,
-      EXCERPT_KEYS,
-      `${source}:quoted-json`,
-    ),
-  );
+  titleCandidates.push(...extractJsonScriptCandidates(payload, TITLE_KEYS, `${source}:script-json`));
+  titleCandidates.push(...extractQuotedJsonCandidates(payload, TITLE_KEYS, `${source}:quoted-json`));
+  excerptCandidates.push(...extractJsonScriptCandidates(payload, EXCERPT_KEYS, `${source}:script-json`));
+  excerptCandidates.push(...extractQuotedJsonCandidates(payload, EXCERPT_KEYS, `${source}:quoted-json`));
   excerptCandidates.push(...extractVisibleTextCandidates(payload, source));
 
-  topicBodyCandidates.push(...extractDisplayPostStoryCandidates(payload, source));
-
-  // Use only the main topic story container for card details.
-  // Do not scan the whole page after the title here, because Pantip comments and
-  // navigation text can appear after the title and may be accidentally selected.
-  void titleForTopicBody;
-
-  return { titleCandidates, excerptCandidates, topicBodyCandidates };
+  return { titleCandidates, excerptCandidates };
 }
 
-function buildFallbackCardHtml(input: {
-  title: string;
-  excerpt: string;
-  sourceUrl: string;
-}) {
+function buildFallbackCardHtml(input: { title: string; excerpt: string; sourceUrl: string }) {
   const safeExcerpt = input.excerpt || "อ่านรายละเอียดต่อได้ที่ลิงก์ต้นทาง";
   const displayUrl = input.sourceUrl.replace(/^https?:\/\//i, "");
 
@@ -939,9 +694,7 @@ async function readBrowserPayloads(sourceUrl: string, topicId: string) {
       if (
         networkPayloads.length >= 18 ||
         !url.includes("pantip") ||
-        (!contentType.includes("json") &&
-          !contentType.includes("text") &&
-          !contentType.includes("html"))
+        (!contentType.includes("json") && !contentType.includes("text") && !contentType.includes("html"))
       ) {
         return;
       }
@@ -960,17 +713,10 @@ async function readBrowserPayloads(sourceUrl: string, topicId: string) {
         .catch(() => undefined);
     });
 
-    await page.goto(sourceUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: 24_000,
-    });
+    await page.goto(sourceUrl, { waitUntil: "domcontentloaded", timeout: 24_000 });
+    await page.waitForSelector("body", { timeout: 8_000 }).catch(() => undefined);
     await page
-      .waitForSelector("body", { timeout: 8_000 })
-      .catch(() => undefined);
-    await page
-      .waitForFunction(() => document.body.innerText.trim().length > 80, {
-        timeout: 8_000,
-      })
+      .waitForFunction(() => document.body.innerText.trim().length > 80, { timeout: 8_000 })
       .catch(() => undefined);
     await new Promise((resolve) => setTimeout(resolve, 2_000));
 
@@ -980,54 +726,22 @@ async function readBrowserPayloads(sourceUrl: string, topicId: string) {
         return element instanceof HTMLMetaElement ? element.content || "" : "";
       }
 
-      const mainPostStoryElement = Array.from(
-        document.querySelectorAll("div.display-post-status-leftside"),
-      )
-        .map((statusElement) => {
-          const wrapperElement = Array.from(statusElement.children).find(
-            (child) =>
-              child instanceof HTMLElement &&
-              child.className.trim() === "display-post-story-wrapper",
-          );
-
-          if (!wrapperElement) {
-            return null;
-          }
-
-          return Array.from(wrapperElement.children).find(
-            (child) =>
-              child instanceof HTMLElement &&
-              child.className.trim() === "display-post-story",
-          );
-        })
-        .find((element) => (element?.textContent || "").trim().length > 0);
-      const displayPostStoryText = mainPostStoryElement?.textContent || "";
-      const displayPostStoryHtml = mainPostStoryElement?.outerHTML || "";
       const headings = Array.from(document.querySelectorAll("h1,h2,h3"))
         .map((element) => element.textContent || "")
         .join("\n");
       const scripts = Array.from(document.scripts)
         .map((script) => script.textContent || "")
-        .filter(
-          (text) =>
-            text.includes("topic") ||
-            text.includes("title") ||
-            /[ก-๙]/.test(text),
-        )
+        .filter((text) => text.includes("topic") || text.includes("title") || /[ก-๙]/.test(text))
         .slice(0, 8)
         .join("\n");
 
       return [
-        "__AI_MAIN_POST_STORY_START__",
-        displayPostStoryText,
-        "__AI_MAIN_POST_STORY_END__",
-        displayPostStoryHtml,
-        headings,
-        document.body.innerText,
         document.title,
         readMeta("meta[property='og:title']"),
         readMeta("meta[property='og:description']"),
         readMeta("meta[name='description']"),
+        headings,
+        document.body.innerText,
         scripts,
       ].join("\n");
     });
@@ -1043,52 +757,52 @@ async function fetchPantipMetadata(sourceUrl: string): Promise<PantipMetadata> {
   const payloads: { payload: string; source: string }[] = [];
 
   try {
-    payloads.push({
-      payload: await fetchPantipHtml(sourceUrl),
-      source: "fetch-html",
-    });
+    payloads.push({ payload: await fetchPantipHtml(sourceUrl), source: "fetch-html" });
   } catch (error) {
-    console.info(
-      "[pantip-preview] direct fetch failed, trying browser extraction",
-      {
-        error: error instanceof Error ? error.message : String(error),
-      },
-    );
+    console.info("[pantip-preview] direct fetch failed, trying browser extraction", {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 
+  const fetchCandidates = payloads.flatMap(({ payload, source }) => [
+    ...extractMetadataCandidatesFromPayload(payload, source).titleCandidates,
+    ...extractMetadataCandidatesFromPayload(payload, source).excerptCandidates,
+  ]);
+
   const titleCandidates: Candidate[] = [];
-  const fallbackExcerptCandidates: Candidate[] = [];
+  const excerptCandidates: Candidate[] = [];
 
   for (const payloadInfo of payloads) {
-    const extracted = extractMetadataCandidatesFromPayload(
-      payloadInfo.payload,
-      payloadInfo.source,
-    );
+    const extracted = extractMetadataCandidatesFromPayload(payloadInfo.payload, payloadInfo.source);
     titleCandidates.push(...extracted.titleCandidates);
-    fallbackExcerptCandidates.push(...extracted.excerptCandidates);
+    excerptCandidates.push(...extracted.excerptCandidates);
   }
 
   let title = pickBestPantipContent(titleCandidates, {
     minimumThaiCharacters: 6,
     maxLength: 150,
   });
+  let excerpt = pickBestPantipContent(excerptCandidates, {
+    minimumThaiCharacters: 12,
+    maxLength: 300,
+  });
 
-  if (!title) {
+  if (!title || (!excerpt && fetchCandidates.length === 0)) {
     const browserPayloads = await readBrowserPayloads(sourceUrl, topicId);
 
     for (const [index, payload] of browserPayloads.entries()) {
-      payloads.push({ payload, source: `browser:${index}` });
-      const extracted = extractMetadataCandidatesFromPayload(
-        payload,
-        `browser:${index}`,
-      );
+      const extracted = extractMetadataCandidatesFromPayload(payload, `browser:${index}`);
       titleCandidates.push(...extracted.titleCandidates);
-      fallbackExcerptCandidates.push(...extracted.excerptCandidates);
+      excerptCandidates.push(...extracted.excerptCandidates);
     }
 
     title = pickBestPantipContent(titleCandidates, {
       minimumThaiCharacters: 6,
       maxLength: 150,
+    });
+    excerpt = pickBestPantipContent(excerptCandidates, {
+      minimumThaiCharacters: 12,
+      maxLength: 300,
     });
   }
 
@@ -1098,81 +812,26 @@ async function fetchPantipMetadata(sourceUrl: string): Promise<PantipMetadata> {
     );
   }
 
-  const topicBodyCandidates: Candidate[] = [];
-
-  for (const payloadInfo of payloads) {
-    const extracted = extractMetadataCandidatesFromPayload(
-      payloadInfo.payload,
-      payloadInfo.source,
-      title.value,
-    );
-    topicBodyCandidates.push(...extracted.topicBodyCandidates);
-  }
-
-  let topicBodyStart = pickFirstTopicBodyStart(topicBodyCandidates, 520);
-
-  if (!topicBodyStart) {
-    const browserPayloads = await readBrowserPayloads(sourceUrl, topicId);
-
-    for (const [index, payload] of browserPayloads.entries()) {
-      const source = `browser-retry:${index}`;
-      const extracted = extractMetadataCandidatesFromPayload(
-        payload,
-        source,
-        title.value,
-      );
-      topicBodyCandidates.push(...extracted.topicBodyCandidates);
-      fallbackExcerptCandidates.push(...extracted.excerptCandidates);
-    }
-
-    topicBodyStart = pickFirstTopicBodyStart(topicBodyCandidates, 520);
-  }
-
-  const metadataFallbackExcerptCandidates = fallbackExcerptCandidates.filter(
-    (candidate) =>
-      [
-        "fetch-html:og:description",
-        "fetch-html:twitter:description",
-        "fetch-html:description",
-      ].includes(candidate.source),
-  );
-  const fallbackExcerpt = pickBestPantipContent(
-    metadataFallbackExcerptCandidates,
-    {
-      minimumThaiCharacters: 8,
-      maxLength: 300,
-    },
-  );
   const safeExcerpt =
-    topicBodyStart?.value ||
-    (fallbackExcerpt?.value &&
-    !fallbackExcerpt.value.includes(title.value) &&
-    fallbackExcerpt.value !== title.value &&
-    !hasCommentMarker(fallbackExcerpt.value)
-      ? fallbackExcerpt.value
-      : "อ่านรายละเอียดต่อได้ที่ลิงก์ต้นทาง");
+    excerpt?.value && !excerpt.value.includes(title.value) && excerpt.value !== title.value
+      ? excerpt.value
+      : "อ่านรายละเอียดต่อได้ที่ลิงก์ต้นทาง";
 
   console.info("[pantip-preview] metadata extracted", {
     titleSource: title.source,
-    excerptSource:
-      topicBodyStart?.source || fallbackExcerpt?.source || "fallback",
+    excerptSource: excerpt?.source || "fallback",
     titleLength: title.value.length,
     excerptLength: safeExcerpt.length,
-    usedStrictTopicBodyStart: Boolean(topicBodyStart),
   });
 
   return {
     title: title.value,
     excerpt: safeExcerpt,
-    source: `${title.source}/${topicBodyStart?.source || fallbackExcerpt?.source || "fallback"}`,
+    source: `${title.source}/${excerpt?.source || "fallback"}`,
   };
 }
 
-async function renderReadableCardImage(input: {
-  title: string;
-  excerpt: string;
-  sourceUrl: string;
-}) {
+async function renderReadableCardImage(input: { title: string; excerpt: string; sourceUrl: string }) {
   const browser = await puppeteer.launch({
     args: [
       ...chromium.args,
@@ -1215,9 +874,7 @@ async function renderReadableCardImage(input: {
 
 export async function createPantipPreviewSnapshot(sourceUrl: string) {
   const metadata = await fetchPantipMetadata(sourceUrl);
-  const warnings = detectPantipRiskWarnings(
-    `${metadata.title}\n${metadata.excerpt}`,
-  );
+  const warnings = detectPantipRiskWarnings(`${metadata.title}\n${metadata.excerpt}`);
   const screenshotBuffer = await renderReadableCardImage({
     title: metadata.title,
     excerpt: metadata.excerpt,
