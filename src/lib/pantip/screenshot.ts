@@ -17,12 +17,12 @@ export type PantipPreviewSnapshot = {
   warnings: ReturnType<typeof detectPantipRiskWarnings>;
 };
 
-const MOBILE_VIEWPORT = {
-  width: 430,
-  height: 932,
-  deviceScaleFactor: 2,
-  isMobile: true,
-  hasTouch: true,
+const PANTIP_EXTRACT_VIEWPORT = {
+  width: 1280,
+  height: 1600,
+  deviceScaleFactor: 1,
+  isMobile: false,
+  hasTouch: false,
 };
 
 const CARD_VIEWPORT = {
@@ -387,6 +387,177 @@ function cleanPantipContentText(value: string) {
   );
 }
 
+
+function getHtmlTagEndIndex(html: string, startIndex: number) {
+  const tagEndIndex = html.indexOf(">", startIndex);
+
+  return tagEndIndex >= 0 ? tagEndIndex + 1 : -1;
+}
+
+function extractBalancedDivHtml(html: string, startIndex: number) {
+  const firstTagEndIndex = getHtmlTagEndIndex(html, startIndex);
+
+  if (firstTagEndIndex < 0) {
+    return "";
+  }
+
+  const divTagPattern = /<\/?div\b[^>]*>/gi;
+  divTagPattern.lastIndex = startIndex;
+  let depth = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = divTagPattern.exec(html))) {
+    const tag = match[0] || "";
+    const isClosingTag = /^<\/div/i.test(tag);
+    const isSelfClosingTag = /\/>$/.test(tag);
+
+    if (isClosingTag) {
+      depth -= 1;
+
+      if (depth === 0) {
+        return html.slice(startIndex, divTagPattern.lastIndex);
+      }
+
+      continue;
+    }
+
+    if (!isSelfClosingTag) {
+      depth += 1;
+    }
+  }
+
+  return html.slice(startIndex, Math.min(html.length, startIndex + 12_000));
+}
+
+function tagHasClass(tag: string, className: string) {
+  const attrs = readHtmlAttributes(tag);
+  const classes = (attrs.get("class") || "").split(/\s+/g).filter(Boolean);
+
+  return classes.includes(className);
+}
+
+function removePantipStoryNonBodyHtml(value: string) {
+  return value
+    .replace(/<!--\s*Start svn\s*-->[\s\S]*?<!--\s*End svn\s*-->/gi, " ")
+    .replace(
+      /<div\b[^>]*class=(?:"[^"]*\bedit-history\b[^"]*"|'[^']*\bedit-history\b[^']*')[^>]*>[\s\S]*?<\/div>/gi,
+      " ",
+    )
+    .replace(
+      /<div\b[^>]*class=(?:"[^"]*\bdisplay-post-story-footer\b[^"]*"|'[^']*\bdisplay-post-story-footer\b[^']*')[\s\S]*$/gi,
+      " ",
+    )
+    .replace(/<img\b[^>]*>/gi, " ")
+    .replace(/<iframe\b[\s\S]*?<\/iframe>/gi, " ")
+    .replace(/<video\b[\s\S]*?<\/video>/gi, " ");
+}
+
+function cleanPantipStoryText(value: string) {
+  return cleanPantipContentText(removePantipStoryNonBodyHtml(value))
+    .replace(/\s*แก้ไขข้อความเมื่อ\s+.*$/i, "")
+    .trim();
+}
+
+function takeHtmlBeforePantipComments(payload: string) {
+  const commentStart = payload.search(
+    /<div\b[^>]*(?:id=(?:"|')comments-(?:counts|jsrender)(?:"|')|class=(?:"|')[^"']*\bsection-comment\b)/i,
+  );
+
+  return commentStart >= 0 ? payload.slice(0, commentStart) : payload;
+}
+
+function extractStoryFromStatusLeftsideBlock(
+  statusBlock: string,
+  source: string,
+): Candidate[] {
+  const candidates: Candidate[] = [];
+  const wrapperPattern =
+    /<div\b[^>]*class=(?:"[^"]*\bdisplay-post-story-wrapper\b[^"]*"|'[^']*\bdisplay-post-story-wrapper\b[^']*')[^>]*>/gi;
+  let wrapperMatch: RegExpExecArray | null;
+
+  while ((wrapperMatch = wrapperPattern.exec(statusBlock))) {
+    const wrapperTag = wrapperMatch[0] || "";
+
+    if (
+      !tagHasClass(wrapperTag, "display-post-story-wrapper") ||
+      tagHasClass(wrapperTag, "comment-wrapper")
+    ) {
+      continue;
+    }
+
+    const wrapperHtml = extractBalancedDivHtml(statusBlock, wrapperMatch.index);
+    const storyPattern =
+      /<div\b[^>]*class=(?:"[^"]*\bdisplay-post-story\b[^"]*"|'[^']*\bdisplay-post-story\b[^']*')[^>]*>/gi;
+    const storyMatch = storyPattern.exec(wrapperHtml);
+
+    if (!storyMatch) {
+      continue;
+    }
+
+    const storyHtml = extractBalancedDivHtml(wrapperHtml, storyMatch.index);
+    const text = cleanPantipStoryText(storyHtml);
+
+    if (text) {
+      candidates.push({ value: text, source });
+    }
+  }
+
+  return candidates;
+}
+
+function extractPantipMainStoryCandidates(payload: string, source: string) {
+  const candidates: Candidate[] = [];
+  const markerPattern =
+    /__AI_MAIN_TOPIC_STORY_START__([\s\S]*?)__AI_MAIN_TOPIC_STORY_END__/gi;
+  let markerMatch: RegExpExecArray | null;
+
+  while ((markerMatch = markerPattern.exec(payload))) {
+    const text = cleanPantipStoryText(markerMatch[1] || "");
+
+    if (text) {
+      candidates.push({ value: text, source: `${source}:main-story-dom` });
+    }
+  }
+
+  const html = takeHtmlBeforePantipComments(payload);
+  const statusLeftsidePattern =
+    /<div\b[^>]*class=(?:"[^"]*\bdisplay-post-status-leftside\b[^"]*"|'[^']*\bdisplay-post-status-leftside\b[^']*')[^>]*>/gi;
+  let statusMatch: RegExpExecArray | null;
+
+  while ((statusMatch = statusLeftsidePattern.exec(html))) {
+    const statusBlock = extractBalancedDivHtml(html, statusMatch.index);
+    candidates.push(
+      ...extractStoryFromStatusLeftsideBlock(
+        statusBlock,
+        `${source}:status-leftside-main-story`,
+      ),
+    );
+  }
+
+  return candidates;
+}
+
+function pickFirstPantipMainStory(candidates: Candidate[], maxLength: number) {
+  for (const candidate of candidates) {
+    const value = cleanPantipStoryText(candidate.value);
+
+    if (
+      value &&
+      value.length >= 2 &&
+      countThaiCharacters(value) >= 2 &&
+      !hasLayoutNoise(value) &&
+      !isGenericPantipShell(value)
+    ) {
+      return {
+        value: truncateText(value, maxLength),
+        source: candidate.source,
+      };
+    }
+  }
+
+  return null;
+}
+
 function countThaiCharacters(value: string) {
   return (value.match(/[ก-๙]/g) || []).length;
 }
@@ -483,6 +654,7 @@ function pickBestPantipContent(
 function extractMetadataCandidatesFromPayload(payload: string, source: string) {
   const titleCandidates: Candidate[] = [];
   const excerptCandidates: Candidate[] = [];
+  const topicStoryCandidates: Candidate[] = [];
 
   for (const key of ["og:title", "twitter:title"]) {
     titleCandidates.push(...readMetaCandidates(payload, key, `${source}:${key}`));
@@ -492,15 +664,21 @@ function extractMetadataCandidatesFromPayload(payload: string, source: string) {
     excerptCandidates.push(...readMetaCandidates(payload, key, `${source}:${key}`));
   }
 
+  topicStoryCandidates.push(...extractPantipMainStoryCandidates(payload, source));
+
   titleCandidates.push(...readTitleCandidates(payload));
   titleCandidates.push(...readHeadingCandidates(payload));
   titleCandidates.push(...extractJsonScriptCandidates(payload, TITLE_KEYS, `${source}:script-json`));
   titleCandidates.push(...extractQuotedJsonCandidates(payload, TITLE_KEYS, `${source}:quoted-json`));
+
+  // Keep script / visible text as secondary fallback only. Main card details
+  // must come from the Pantip topic-story DOM when available, not from
+  // comments or generic page text.
   excerptCandidates.push(...extractJsonScriptCandidates(payload, EXCERPT_KEYS, `${source}:script-json`));
   excerptCandidates.push(...extractQuotedJsonCandidates(payload, EXCERPT_KEYS, `${source}:quoted-json`));
   excerptCandidates.push(...extractVisibleTextCandidates(payload, source));
 
-  return { titleCandidates, excerptCandidates };
+  return { titleCandidates, excerptCandidates, topicStoryCandidates };
 }
 
 function buildFallbackCardHtml(input: { title: string; excerpt: string; sourceUrl: string }) {
@@ -648,7 +826,7 @@ async function fetchPantipHtml(sourceUrl: string) {
     headers: {
       "Accept-Language": "th-TH,th;q=0.9,en-US;q=0.8,en;q=0.7",
       "User-Agent":
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
     },
     cache: "no-store",
   });
@@ -668,7 +846,7 @@ async function readBrowserPayloads(sourceUrl: string, topicId: string) {
       "--disable-web-security",
       "--disable-features=Translate,BackForwardCache,AcceptCHFrame",
     ],
-    defaultViewport: MOBILE_VIEWPORT,
+    defaultViewport: PANTIP_EXTRACT_VIEWPORT,
     executablePath: await getExecutablePath(),
     headless: true,
   });
@@ -677,9 +855,9 @@ async function readBrowserPayloads(sourceUrl: string, topicId: string) {
 
   try {
     const page = await browser.newPage();
-    await page.setViewport(MOBILE_VIEWPORT);
+    await page.setViewport(PANTIP_EXTRACT_VIEWPORT);
     await page.setUserAgent(
-      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
     );
     await page.setExtraHTTPHeaders({
       "Accept-Language": "th-TH,th;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -726,6 +904,23 @@ async function readBrowserPayloads(sourceUrl: string, topicId: string) {
         return element instanceof HTMLMetaElement ? element.content || "" : "";
       }
 
+      const mainStoryElement = Array.from(
+        document.querySelectorAll(
+          ".display-post-status-leftside .display-post-story-wrapper .display-post-story",
+        ),
+      ).find((element) => {
+        const wrapper = element.closest(".display-post-story-wrapper");
+
+        return (
+          wrapper &&
+          !wrapper.classList.contains("comment-wrapper") &&
+          !element.closest(".section-comment") &&
+          !element.closest("[id^='comment-']") &&
+          !element.closest("[id^='reply-']")
+        );
+      });
+      const mainStoryText = mainStoryElement?.textContent || "";
+      const mainStoryHtml = mainStoryElement?.outerHTML || "";
       const headings = Array.from(document.querySelectorAll("h1,h2,h3"))
         .map((element) => element.textContent || "")
         .join("\n");
@@ -736,6 +931,12 @@ async function readBrowserPayloads(sourceUrl: string, topicId: string) {
         .join("\n");
 
       return [
+        "__AI_MAIN_TOPIC_STORY_START__",
+        mainStoryText,
+        "__AI_MAIN_TOPIC_STORY_END__",
+        "__AI_MAIN_TOPIC_STORY_START__",
+        mainStoryHtml,
+        "__AI_MAIN_TOPIC_STORY_END__",
         document.title,
         readMeta("meta[property='og:title']"),
         readMeta("meta[property='og:description']"),
@@ -764,46 +965,39 @@ async function fetchPantipMetadata(sourceUrl: string): Promise<PantipMetadata> {
     });
   }
 
-  const fetchCandidates = payloads.flatMap(({ payload, source }) => [
-    ...extractMetadataCandidatesFromPayload(payload, source).titleCandidates,
-    ...extractMetadataCandidatesFromPayload(payload, source).excerptCandidates,
-  ]);
-
   const titleCandidates: Candidate[] = [];
   const excerptCandidates: Candidate[] = [];
+  const topicStoryCandidates: Candidate[] = [];
 
   for (const payloadInfo of payloads) {
     const extracted = extractMetadataCandidatesFromPayload(payloadInfo.payload, payloadInfo.source);
     titleCandidates.push(...extracted.titleCandidates);
     excerptCandidates.push(...extracted.excerptCandidates);
+    topicStoryCandidates.push(...extracted.topicStoryCandidates);
   }
 
   let title = pickBestPantipContent(titleCandidates, {
     minimumThaiCharacters: 6,
     maxLength: 150,
   });
-  let excerpt = pickBestPantipContent(excerptCandidates, {
-    minimumThaiCharacters: 12,
-    maxLength: 300,
-  });
+  let topicStory = pickFirstPantipMainStory(topicStoryCandidates, 520);
 
-  if (!title || (!excerpt && fetchCandidates.length === 0)) {
+  if (!title || !topicStory) {
     const browserPayloads = await readBrowserPayloads(sourceUrl, topicId);
 
     for (const [index, payload] of browserPayloads.entries()) {
+      payloads.push({ payload, source: `browser:${index}` });
       const extracted = extractMetadataCandidatesFromPayload(payload, `browser:${index}`);
       titleCandidates.push(...extracted.titleCandidates);
       excerptCandidates.push(...extracted.excerptCandidates);
+      topicStoryCandidates.push(...extracted.topicStoryCandidates);
     }
 
     title = pickBestPantipContent(titleCandidates, {
       minimumThaiCharacters: 6,
       maxLength: 150,
     });
-    excerpt = pickBestPantipContent(excerptCandidates, {
-      minimumThaiCharacters: 12,
-      maxLength: 300,
-    });
+    topicStory = pickFirstPantipMainStory(topicStoryCandidates, 520);
   }
 
   if (!title) {
@@ -812,22 +1006,34 @@ async function fetchPantipMetadata(sourceUrl: string): Promise<PantipMetadata> {
     );
   }
 
+  const metadataOnlyExcerptCandidates = excerptCandidates.filter((candidate) =>
+    /:(?:og:description|twitter:description|description)$/.test(candidate.source),
+  );
+  const fallbackExcerpt = pickBestPantipContent(metadataOnlyExcerptCandidates, {
+    minimumThaiCharacters: 8,
+    maxLength: 300,
+  });
   const safeExcerpt =
-    excerpt?.value && !excerpt.value.includes(title.value) && excerpt.value !== title.value
-      ? excerpt.value
-      : "อ่านรายละเอียดต่อได้ที่ลิงก์ต้นทาง";
+    topicStory?.value ||
+    (fallbackExcerpt?.value &&
+    !fallbackExcerpt.value.includes(title.value) &&
+    fallbackExcerpt.value !== title.value
+      ? fallbackExcerpt.value
+      : "อ่านรายละเอียดต่อได้ที่ลิงก์ต้นทาง");
 
   console.info("[pantip-preview] metadata extracted", {
     titleSource: title.source,
-    excerptSource: excerpt?.source || "fallback",
+    excerptSource: topicStory?.source || fallbackExcerpt?.source || "fallback",
     titleLength: title.value.length,
     excerptLength: safeExcerpt.length,
+    usedMainTopicStory: Boolean(topicStory),
+    mainStoryCandidateCount: topicStoryCandidates.length,
   });
 
   return {
     title: title.value,
     excerpt: safeExcerpt,
-    source: `${title.source}/${excerpt?.source || "fallback"}`,
+    source: `${title.source}/${topicStory?.source || fallbackExcerpt?.source || "fallback"}`,
   };
 }
 

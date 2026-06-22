@@ -474,3 +474,9 @@ Pantip captions are intentionally short. The caption prompt now treats the extra
 - The AI prompt now explicitly avoids bot-like lead-ins such as `CNN รายงานว่า`, `BBC รายงานว่า`, `The Guardian รายงานว่า`, `มีรายงานว่า`, and `สำนักข่าวรายงานว่า`.
 - The generated post should open with the actual news angle immediately, then end with source credit and the original link.
 - The feature remains manual-only: user chooses the RSS item, previews/edits the caption, and manually publishes.
+
+## Pantip exact main-story extractor
+- Pantip card details now prefer the real topic body from the HTML path `display-post-status-leftside` → `display-post-story-wrapper` → `display-post-story`.
+- The main topic story is selected before generic visible text, scripts, or comments.
+- Comment wrappers such as `display-post-story-wrapper comment-wrapper` are not used for card details.
+- If the topic body cannot be found, the system falls back to metadata description or a safe source-link message.
