@@ -481,3 +481,7 @@ Pantip captions are intentionally short. The caption prompt now treats the extra
 - The extractor stops before comment markers such as ความคิดเห็น, แสดงคิดเห็น, ตอบกลับ, ถูกใจ, and สมาชิกหมายเลข.
 - Short topic bodies remain short; the system should not fill the card with comments.
 - Long topic bodies are truncated from the beginning rather than selecting text from the middle of the topic.
+
+
+### Pantip topic body extraction note
+Pantip card detail now prioritizes `div.display-post-story` as the source of the original topic body before falling back to safer metadata-based extraction. This helps prevent comments, menus, and footer text from appearing in generated cards.

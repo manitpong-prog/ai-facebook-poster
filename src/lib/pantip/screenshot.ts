@@ -462,6 +462,84 @@ function removeTextAfterCommentMarkers(value: string) {
   return value.slice(0, Math.min(...markerIndexes));
 }
 
+function getHtmlTagEndIndex(html: string, startIndex: number) {
+  const tagEndIndex = html.indexOf(">", startIndex);
+
+  return tagEndIndex >= 0 ? tagEndIndex + 1 : -1;
+}
+
+function extractBalancedDivHtml(html: string, startIndex: number) {
+  const firstTagEndIndex = getHtmlTagEndIndex(html, startIndex);
+
+  if (firstTagEndIndex < 0) {
+    return "";
+  }
+
+  const divTagPattern = /<\/?div\b[^>]*>/gi;
+  divTagPattern.lastIndex = startIndex;
+  let depth = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = divTagPattern.exec(html))) {
+    const tag = match[0] || "";
+    const isClosingTag = /^<\/div/i.test(tag);
+    const isSelfClosingTag = /\/>$/.test(tag);
+
+    if (isClosingTag) {
+      depth -= 1;
+
+      if (depth === 0) {
+        return html.slice(startIndex, divTagPattern.lastIndex);
+      }
+
+      continue;
+    }
+
+    if (!isSelfClosingTag) {
+      depth += 1;
+    }
+  }
+
+  return html.slice(startIndex, Math.min(html.length, startIndex + 8_000));
+}
+
+function extractDisplayPostStoryCandidates(payload: string, source: string) {
+  const candidates: Candidate[] = [];
+
+  const markerPattern =
+    /__AI_DISPLAY_POST_STORY_START__([\s\S]*?)__AI_DISPLAY_POST_STORY_END__/gi;
+  let markerMatch: RegExpExecArray | null;
+
+  while ((markerMatch = markerPattern.exec(payload))) {
+    const text = cleanPantipContentText(markerMatch[1] || "");
+
+    if (text) {
+      candidates.push({
+        value: text,
+        source: `${source}:display-post-story:dom`,
+      });
+    }
+  }
+
+  const displayPostStoryPattern =
+    /<div\b[^>]*class=(?:"[^"]*\bdisplay-post-story\b[^"]*"|'[^']*\bdisplay-post-story\b[^']*')[^>]*>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = displayPostStoryPattern.exec(payload))) {
+    const blockHtml = extractBalancedDivHtml(payload, match.index);
+    const text = cleanPantipContentText(blockHtml);
+
+    if (text) {
+      candidates.push({
+        value: text,
+        source: `${source}:display-post-story:html`,
+      });
+    }
+  }
+
+  return candidates;
+}
+
 function findTitleIndexInText(value: string, title: string) {
   const normalizedValue = normalizeText(value);
   const normalizedTitle = normalizeText(title);
@@ -584,12 +662,12 @@ function extractTopicBodyStartCandidates(
 
 function pickFirstTopicBodyStart(candidates: Candidate[], maxLength: number) {
   for (const candidate of candidates) {
-    const value = cleanPantipContentText(candidate.value);
+    const rawValue = cleanPantipContentText(candidate.value);
+    const value = cleanPantipContentText(removeTextAfterCommentMarkers(rawValue));
 
     if (
       value &&
       countThaiCharacters(value) >= 4 &&
-      !hasCommentMarker(value) &&
       !hasLayoutNoise(value) &&
       !isGenericPantipShell(value)
     ) {
@@ -755,6 +833,8 @@ function extractMetadataCandidatesFromPayload(
     ),
   );
   excerptCandidates.push(...extractVisibleTextCandidates(payload, source));
+
+  topicBodyCandidates.push(...extractDisplayPostStoryCandidates(payload, source));
 
   if (titleForTopicBody) {
     topicBodyCandidates.push(
@@ -1001,6 +1081,10 @@ async function readBrowserPayloads(sourceUrl: string, topicId: string) {
         return element instanceof HTMLMetaElement ? element.content || "" : "";
       }
 
+      const displayPostStoryText =
+        document.querySelector(".display-post-story")?.textContent || "";
+      const displayPostStoryHtml =
+        document.querySelector(".display-post-story")?.outerHTML || "";
       const headings = Array.from(document.querySelectorAll("h1,h2,h3"))
         .map((element) => element.textContent || "")
         .join("\n");
@@ -1016,6 +1100,10 @@ async function readBrowserPayloads(sourceUrl: string, topicId: string) {
         .join("\n");
 
       return [
+        "__AI_DISPLAY_POST_STORY_START__",
+        displayPostStoryText,
+        "__AI_DISPLAY_POST_STORY_END__",
+        displayPostStoryHtml,
         headings,
         document.body.innerText,
         document.title,
