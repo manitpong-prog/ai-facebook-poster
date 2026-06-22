@@ -499,3 +499,10 @@ Pantip can use `.display-post-story-wrapper` and `.display-post-story` for both 
 ## Pantip main post selector update
 - Pantip card extraction now targets the story only when it appears under `.display-post-wrapper.main-post .display-post-status-leftside > .display-post-story-wrapper:not(.comment-wrapper) .display-post-story`.
 - This avoids using comment story blocks, because comments can also contain `.display-post-story-wrapper` and `.display-post-story`.
+
+
+## Pantip source extraction note — status-leftside direct selector
+- Pantip main topic details are now extracted from `.display-post-status-leftside .display-post-story-wrapper:not(.comment-wrapper) .display-post-story`.
+- The extractor no longer requires `.display-post-wrapper.main-post`, because some rendered Pantip pages do not expose that class to Puppeteer.
+- Comment story wrappers are still ignored by checking `.comment-wrapper`, `.section-comment`, and comment/reply IDs.
+- If no main topic body is found, the system falls back to safe metadata/title text rather than using comments.
