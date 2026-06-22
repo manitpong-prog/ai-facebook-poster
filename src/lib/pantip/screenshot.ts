@@ -516,62 +516,39 @@ function extractDisplayPostStoryCandidates(payload: string, source: string) {
     if (text) {
       candidates.push({
         value: text,
-        source: `${source}:status-leftside-story-wrapper:dom`,
+        source: `${source}:exact-status-leftside-story:dom`,
       });
     }
   }
 
-  // Pantip topic bodies consistently appear below display-post-status-leftside.
-  // Do not require .main-post here because some rendered Pantip pages do not
-  // expose that class to Puppeteer. Instead, scan status-leftside blocks and
-  // only accept their non-comment story wrapper.
-  const searchPayload = payload;
-  const statusLeftsidePattern =
-    /<div\b[^>]*class=(?:"[^"]*\bdisplay-post-status-leftside\b[^"]*"|'[^']*\bdisplay-post-status-leftside\b[^']*')[^>]*>/gi;
-  let statusMatch: RegExpExecArray | null;
+  // Use the exact Pantip topic-body path observed in real pages, with exact class values:
+  // <div class="display-post-status-leftside">
+  //   <div class="display-post-story-wrapper">
+  //     <div class="display-post-story"> ...
+  // Avoid broad .display-post-story scans because comments reuse that class.
+  const exactMainStoryPattern =
+    /<div\b[^>]*class=(?:"display-post-status-leftside"|'display-post-status-leftside')[^>]*>\s*<div\b[^>]*class=(?:"display-post-story-wrapper"|'display-post-story-wrapper')[^>]*>\s*<div\b[^>]*class=(?:"display-post-story"|'display-post-story')[^>]*>/gi;
+  let exactMatch: RegExpExecArray | null;
 
-  while ((statusMatch = statusLeftsidePattern.exec(searchPayload))) {
-    const statusHtml = extractBalancedDivHtml(searchPayload, statusMatch.index);
+  while ((exactMatch = exactMainStoryPattern.exec(payload))) {
+    const matchedPath = exactMatch[0] || "";
+    const storyTagOffset = matchedPath.lastIndexOf("<div");
 
-    if (!/\bdisplay-post-story-wrapper\b/i.test(statusHtml)) {
+    if (storyTagOffset < 0) {
       continue;
     }
 
-    const wrapperPattern =
-      /<div\b[^>]*class=(?:"[^"]*\bdisplay-post-story-wrapper\b[^"]*"|'[^']*\bdisplay-post-story-wrapper\b[^']*')[^>]*>/gi;
-    let wrapperMatch: RegExpExecArray | null;
+    const storyHtml = extractBalancedDivHtml(
+      payload,
+      exactMatch.index + storyTagOffset,
+    );
+    const text = cleanPantipContentText(storyHtml);
 
-    while ((wrapperMatch = wrapperPattern.exec(statusHtml))) {
-      const wrapperOpeningTag = wrapperMatch[0] || "";
-
-      if (/\bcomment-wrapper\b/i.test(wrapperOpeningTag)) {
-        continue;
-      }
-
-      const wrapperHtml = extractBalancedDivHtml(statusHtml, wrapperMatch.index);
-
-      if (
-        /\bsection-comment\b/i.test(wrapperHtml) ||
-        /id=(?:"|')(?:comment|reply)-/i.test(wrapperHtml)
-      ) {
-        continue;
-      }
-
-      const storyOpeningMatch = wrapperHtml.match(
-        /<div\b[^>]*class=(?:"[^"]*\bdisplay-post-story\b[^"]*"|'[^']*\bdisplay-post-story\b[^']*')[^>]*>/i,
-      );
-      const storyHtml =
-        storyOpeningMatch && storyOpeningMatch.index !== undefined
-          ? extractBalancedDivHtml(wrapperHtml, storyOpeningMatch.index)
-          : wrapperHtml;
-      const text = cleanPantipContentText(storyHtml);
-
-      if (text) {
-        candidates.push({
-          value: text,
-          source: `${source}:status-leftside-story-wrapper:html`,
-        });
-      }
+    if (text) {
+      candidates.push({
+        value: text,
+        source: `${source}:exact-status-leftside-story:html`,
+      });
     }
   }
 
@@ -582,7 +559,7 @@ function pickFirstTopicBodyStart(candidates: Candidate[], maxLength: number) {
   for (const candidate of candidates) {
     const rawValue = cleanPantipContentText(candidate.value);
     const isStrictMainStory = candidate.source.includes(
-      "status-leftside-story-wrapper",
+      "exact-status-leftside-story",
     );
     const value = isStrictMainStory
       ? rawValue
@@ -1004,24 +981,26 @@ async function readBrowserPayloads(sourceUrl: string, topicId: string) {
       }
 
       const mainPostStoryElement = Array.from(
-        document.querySelectorAll(
-          ".display-post-status-leftside .display-post-story-wrapper:not(.comment-wrapper) .display-post-story",
-        ),
-      ).find((element) => {
-        if (!(element instanceof HTMLElement)) {
-          return false;
-        }
+        document.querySelectorAll("div.display-post-status-leftside"),
+      )
+        .map((statusElement) => {
+          const wrapperElement = Array.from(statusElement.children).find(
+            (child) =>
+              child instanceof HTMLElement &&
+              child.className.trim() === "display-post-story-wrapper",
+          );
 
-        if (
-          element.closest(
-            ".section-comment,.comment-wrapper,[id^='comment-'],[id^='reply-']",
-          )
-        ) {
-          return false;
-        }
+          if (!wrapperElement) {
+            return null;
+          }
 
-        return (element.textContent || "").trim().length > 0;
-      });
+          return Array.from(wrapperElement.children).find(
+            (child) =>
+              child instanceof HTMLElement &&
+              child.className.trim() === "display-post-story",
+          );
+        })
+        .find((element) => (element?.textContent || "").trim().length > 0);
       const displayPostStoryText = mainPostStoryElement?.textContent || "";
       const displayPostStoryHtml = mainPostStoryElement?.outerHTML || "";
       const headings = Array.from(document.querySelectorAll("h1,h2,h3"))

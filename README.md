@@ -506,3 +506,7 @@ Pantip can use `.display-post-story-wrapper` and `.display-post-story` for both 
 - The extractor no longer requires `.display-post-wrapper.main-post`, because some rendered Pantip pages do not expose that class to Puppeteer.
 - Comment story wrappers are still ignored by checking `.comment-wrapper`, `.section-comment`, and comment/reply IDs.
 - If no main topic body is found, the system falls back to safe metadata/title text rather than using comments.
+
+## Pantip exact main story path
+- Pantip topic body extraction now checks the exact direct DOM path: `div.display-post-status-leftside > div.display-post-story-wrapper > div.display-post-story`.
+- The wrapper class must be exactly `display-post-story-wrapper`, so comment editor/comment blocks such as `display-post-story-wrapper comment-wrapper` are not selected by this strict path.
