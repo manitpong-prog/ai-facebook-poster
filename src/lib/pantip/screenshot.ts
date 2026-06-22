@@ -503,6 +503,18 @@ function extractBalancedDivHtml(html: string, startIndex: number) {
   return html.slice(startIndex, Math.min(html.length, startIndex + 8_000));
 }
 
+function extractMainPostHtml(payload: string) {
+  const mainPostPattern =
+    /<div\b[^>]*class=(?:"[^"]*\bdisplay-post-wrapper\b[^"]*\bmain-post\b[^"]*"|'[^']*\bdisplay-post-wrapper\b[^']*\bmain-post\b[^']*')[^>]*>/i;
+  const mainPostMatch = payload.match(mainPostPattern);
+
+  if (!mainPostMatch || mainPostMatch.index === undefined) {
+    return "";
+  }
+
+  return extractBalancedDivHtml(payload, mainPostMatch.index);
+}
+
 function extractDisplayPostStoryCandidates(payload: string, source: string) {
   const candidates: Candidate[] = [];
 
@@ -516,45 +528,60 @@ function extractDisplayPostStoryCandidates(payload: string, source: string) {
     if (text) {
       candidates.push({
         value: text,
-        source: `${source}:display-post-story-wrapper:not-comment:dom`,
+        source: `${source}:main-post-status-leftside:dom`,
       });
     }
   }
 
-  const displayPostStoryWrapperPattern =
-    /<div\b[^>]*class=(?:"[^"]*\bdisplay-post-story-wrapper\b[^"]*"|'[^']*\bdisplay-post-story-wrapper\b[^']*')[^>]*>/gi;
-  let wrapperMatch: RegExpExecArray | null;
+  // In Pantip topic pages, the main post text is inside the main-post wrapper,
+  // then a display-post-status-leftside block, then display-post-story-wrapper.
+  // Comments can reuse display-post-story-wrapper/display-post-story, so we do
+  // not scan those generic classes globally.
+  const searchPayload = extractMainPostHtml(payload) || payload;
+  const statusLeftsidePattern =
+    /<div\b[^>]*class=(?:"[^"]*\bdisplay-post-status-leftside\b[^"]*"|'[^']*\bdisplay-post-status-leftside\b[^']*')[^>]*>/gi;
+  let statusMatch: RegExpExecArray | null;
 
-  while ((wrapperMatch = displayPostStoryWrapperPattern.exec(payload))) {
-    const openingTag = wrapperMatch[0] || "";
+  while ((statusMatch = statusLeftsidePattern.exec(searchPayload))) {
+    const statusHtml = extractBalancedDivHtml(searchPayload, statusMatch.index);
 
-    // Pantip comments also use display-post-story, but their story wrapper has
-    // the extra comment-wrapper class. Do not reject based on arbitrary words in
-    // the story text itself, because the main topic can naturally mention words
-    // like "ความคิดเห็น". Reject only by structural comment markers.
-    if (/\bcomment-wrapper\b/i.test(openingTag)) {
+    if (!/\bdisplay-post-story-wrapper\b/i.test(statusHtml)) {
       continue;
     }
 
-    const blockHtml = extractBalancedDivHtml(payload, wrapperMatch.index);
-
+    // Comment blocks have comment-wrapper, display-post-number, or live under
+    // comment/reply containers. Reject by structure, not by story words.
     if (
-      /<span\b[^>]*class=(?:"[^"]*\bdisplay-post-number\b[^"]*"|'[^']*\bdisplay-post-number\b[^']*')[^>]*>\s*ความคิดเห็นที่/i.test(
-        blockHtml,
-      )
+      /\bcomment-wrapper\b/i.test(statusHtml) ||
+      /\bsection-comment\b/i.test(statusHtml) ||
+      /\bdisplay-post-number\b/i.test(statusHtml) ||
+      /id=(?:"|')(?:comment|reply)-/i.test(statusHtml)
     ) {
       continue;
     }
 
-    const storyMatch = blockHtml.match(
-      /<div\b[^>]*class=(?:"[^"]*\bdisplay-post-story\b[^"]*"|'[^']*\bdisplay-post-story\b[^']*')[^>]*>[\s\S]*?<\/div>/i,
+    const wrapperMatch = statusHtml.match(
+      /<div\b[^>]*class=(?:"[^"]*\bdisplay-post-story-wrapper\b(?![^"]*\bcomment-wrapper\b)[^"]*"|'[^']*\bdisplay-post-story-wrapper\b(?![^']*\bcomment-wrapper\b)[^']*')[^>]*>/i,
     );
-    const text = cleanPantipContentText(storyMatch?.[0] || blockHtml);
+
+    if (!wrapperMatch || wrapperMatch.index === undefined) {
+      continue;
+    }
+
+    const wrapperHtml = extractBalancedDivHtml(statusHtml, wrapperMatch.index);
+    const storyOpeningMatch = wrapperHtml.match(
+      /<div\b[^>]*class=(?:"[^"]*\bdisplay-post-story\b[^"]*"|'[^']*\bdisplay-post-story\b[^']*')[^>]*>/i,
+    );
+    const storyHtml =
+      storyOpeningMatch && storyOpeningMatch.index !== undefined
+        ? extractBalancedDivHtml(wrapperHtml, storyOpeningMatch.index)
+        : wrapperHtml;
+    const text = cleanPantipContentText(storyHtml);
 
     if (text) {
       candidates.push({
         value: text,
-        source: `${source}:display-post-story-wrapper:not-comment:html`,
+        source: `${source}:main-post-status-leftside:html`,
       });
     }
   }
@@ -566,7 +593,7 @@ function pickFirstTopicBodyStart(candidates: Candidate[], maxLength: number) {
   for (const candidate of candidates) {
     const rawValue = cleanPantipContentText(candidate.value);
     const isStrictMainStory = candidate.source.includes(
-      "display-post-story-wrapper:not-comment",
+      "main-post-status-leftside",
     );
     const value = isStrictMainStory
       ? rawValue
@@ -989,7 +1016,11 @@ async function readBrowserPayloads(sourceUrl: string, topicId: string) {
 
       const mainPostStoryElement = Array.from(
         document.querySelectorAll(
-          ".display-post-story-wrapper:not(.comment-wrapper) .display-post-story",
+          [
+            ".display-post-wrapper.main-post .display-post-status-leftside > .display-post-story-wrapper:not(.comment-wrapper) .display-post-story",
+            "[id^='topic-'].display-post-wrapper .display-post-status-leftside > .display-post-story-wrapper:not(.comment-wrapper) .display-post-story",
+            ".main-post .display-post-status-leftside > .display-post-story-wrapper:not(.comment-wrapper) .display-post-story",
+          ].join(","),
         ),
       ).find((element) => {
         if (!(element instanceof HTMLElement)) {

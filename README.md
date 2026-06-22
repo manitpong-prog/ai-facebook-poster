@@ -495,3 +495,7 @@ Pantip card detail now prioritizes `div.display-post-story` as the source of the
 ## Pantip main-topic extraction detail
 
 Pantip can use `.display-post-story-wrapper` and `.display-post-story` for both the main topic and comments. The extractor therefore treats `.display-post-story-wrapper.comment-wrapper`, `.section-comment`, `comment-*` / `reply-*` containers, and `.display-post-number` comment markers as comment-only structures and excludes them from card details.
+
+## Pantip main post selector update
+- Pantip card extraction now targets the story only when it appears under `.display-post-wrapper.main-post .display-post-status-leftside > .display-post-story-wrapper:not(.comment-wrapper) .display-post-story`.
+- This avoids using comment story blocks, because comments can also contain `.display-post-story-wrapper` and `.display-post-story`.
