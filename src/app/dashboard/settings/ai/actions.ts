@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { testGeminiConnection } from "@/lib/ai/gemini";
 import {
   deleteWorkspaceGeminiApiKey,
+  getGeminiTextModelValidationError,
   getGeminiSettingsSummary,
   saveWorkspaceGeminiSettings,
 } from "@/lib/ai/settings";
@@ -90,6 +91,17 @@ export async function saveGeminiSettingsAction(formData: FormData) {
     redirect("/dashboard/settings/ai?error=invalid_key");
   }
 
+  const modelError = getGeminiTextModelValidationError(model);
+
+  if (modelError) {
+    redirect(
+      buildRedirect({
+        error: "invalid_model",
+        message: truncateForUrl(modelError),
+      }),
+    );
+  }
+
   let summary: Awaited<ReturnType<typeof getGeminiSettingsSummary>>;
 
   try {
@@ -136,6 +148,17 @@ export async function testAndSaveGeminiSettingsAction(formData: FormData) {
 
   if (apiKey && apiKey.length < 20) {
     redirect("/dashboard/settings/ai?error=invalid_key");
+  }
+
+  const modelError = getGeminiTextModelValidationError(model);
+
+  if (modelError) {
+    redirect(
+      buildRedirect({
+        error: "invalid_model",
+        message: truncateForUrl(modelError),
+      }),
+    );
   }
 
   let summary: Awaited<ReturnType<typeof getGeminiSettingsSummary>>;

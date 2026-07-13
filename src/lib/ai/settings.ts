@@ -10,6 +10,16 @@ import {
 
 export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-lite";
 
+const NON_TEXT_MODEL_MARKERS = [
+  "embedding",
+  "imagen",
+  "image",
+  "tts",
+  "live",
+  "veo",
+  "lyria",
+];
+
 const GEMINI_ENCRYPTION_VERSION = 1;
 
 type SaveWorkspaceGeminiSettingsInput = {
@@ -31,6 +41,31 @@ function getEncryptionContext(workspaceId: string) {
 
 function normalizeModel(value: string | null | undefined) {
   return value?.trim().slice(0, 120) || null;
+}
+
+export function getGeminiTextModelValidationError(
+  value: string | null | undefined,
+) {
+  const model = normalizeModel(value);
+
+  if (!model) {
+    return null;
+  }
+
+  const normalized = model.toLowerCase();
+  const unsupportedMarker = NON_TEXT_MODEL_MARKERS.find((marker) =>
+    normalized.includes(marker),
+  );
+
+  if (unsupportedMarker) {
+    return `โมเดล ${model} ไม่ใช่โมเดลสร้างข้อความสำหรับโพสต์ กรุณาใช้ gemini-2.5-flash-lite หรือ gemini-2.5-flash`;
+  }
+
+  if (!normalized.startsWith("gemini-")) {
+    return `ชื่อโมเดล ${model} ไม่ถูกต้อง กรุณาใช้ชื่อที่ขึ้นต้นด้วย gemini-`;
+  }
+
+  return null;
 }
 
 function normalizeApiKey(value: string | null | undefined) {

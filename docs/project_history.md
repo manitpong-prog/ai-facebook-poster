@@ -132,3 +132,56 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 4. เปิด `/dashboard/settings/ai`
 5. วางคีย์ Gemini แล้วกด “ทดสอบและบันทึก”
 6. หลังจากนั้นเปลี่ยนคีย์จากหน้าเว็บได้ทันทีโดยไม่ต้อง Redeploy
+
+## 2026-07-13 — Gemini empty-content recovery and diagnostics
+
+### Problem
+หลังเปลี่ยน Gemini API Key ระบบเรียก API สำเร็จแต่การสร้างโพสต์หยุดด้วยข้อความ `Gemini returned empty content` ทำให้แยกไม่ได้ว่าเกิดจากโมเดลไม่คืน text, safety filter, token limit, response ชั่วคราว หรือเลือกโมเดลที่ไม่ใช่ text generation
+
+### Root cause in the application
+- โค้ดเดิมอ่านเฉพาะ `response.text`
+- เมื่อไม่มีข้อความ โค้ดทิ้งรายละเอียดสำคัญจาก `promptFeedback`, `candidates[].finishReason`, `safetyRatings`, response parts และ `responseId`
+- ไม่มี retry สำหรับกรณี Gemini คืน response ว่างแบบชั่วคราว
+- ช่อง Model ยอมรับชื่อโมเดลภาพ, TTS, Live, Embedding, Imagen หรือ Veo ซึ่งอาจตอบกลับโดยไม่มีข้อความโพสต์
+- Connection Test จำกัด output เพียง 16 tokens ซึ่งต่ำเกินไปสำหรับโมเดลที่มี thinking tokens
+
+### Changes
+- เพิ่ม Gemini text request helper กลางใน `src/lib/ai/gemini.ts`
+- อ่าน text จากทั้ง quick accessor และ `candidates[].content.parts[]`
+- Retry response ว่างอัตโนมัติสูงสุด 3 ครั้งพร้อม delay สั้น ๆ
+- ไม่ retry กรณีที่ชัดเจนว่าเป็น Safety, Recitation, Language, Prohibited Content หรือ SPII
+- เพิ่ม diagnostics โดยไม่ log API Key หรือ prompt:
+  - model/modelVersion
+  - responseId
+  - prompt block reason
+  - finish reason/message
+  - blocked safety category
+  - จำนวน candidate/text/thought/non-text parts
+  - prompt/output/thought/total tokens
+- เพิ่มข้อความผิดพลาดที่อ่านสาเหตุได้จริงแทน `Gemini returned empty content` แบบเดิม
+- กำหนด `responseMimeType: text/plain` และ output token limit ที่เหมาะกับแต่ละงาน
+- เพิ่ม Connection Test output limit จาก 16 เป็น 128 tokens
+- เพิ่ม server-side validation ป้องกันการเลือกโมเดลที่ไม่ใช่ text generation
+- เพิ่มรายการแนะนำในหน้า AI Settings:
+  - `gemini-2.5-flash-lite`
+  - `gemini-2.5-flash`
+
+### Files updated
+- `src/lib/ai/gemini.ts`
+- `src/lib/ai/settings.ts`
+- `src/app/dashboard/settings/ai/actions.ts`
+- `src/app/dashboard/settings/ai/page.tsx`
+- `docs/project_history.md`
+- `log_project.md`
+
+### Database / Environment
+- No SQL changes.
+- No database schema changes.
+- No new environment variables.
+- Existing `APP_ENCRYPTION_KEY` and Workspace Gemini API Key settings remain unchanged.
+
+### Expected behavior after deploy
+1. Set the model to `gemini-2.5-flash-lite` or `gemini-2.5-flash`.
+2. Use “ทดสอบและบันทึก” in `/dashboard/settings/ai`.
+3. Empty responses that are temporary are retried automatically.
+4. If generation still fails, the UI/Vercel log shows the actual finish reason and response ID instead of a generic empty-content error.

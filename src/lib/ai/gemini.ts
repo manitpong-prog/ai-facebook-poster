@@ -1,4 +1,8 @@
-import { GoogleGenAI } from "@google/genai";
+import {
+  GoogleGenAI,
+  type GenerateContentConfig,
+  type GenerateContentResponse,
+} from "@google/genai";
 
 import type { writingProfiles } from "@/db/schema";
 import { resolveGeminiConfiguration } from "@/lib/ai/settings";
@@ -27,7 +31,247 @@ type GeminiUsageMetadata = {
   promptTokenCount?: number;
   candidatesTokenCount?: number;
   totalTokenCount?: number;
+  thoughtsTokenCount?: number;
 };
+
+type GeminiTextRequest = {
+  client: GoogleGenAI;
+  model: string;
+  contents: string;
+  operation: string;
+  config?: GenerateContentConfig;
+  maxAttempts?: number;
+};
+
+type GeminiResponseDiagnostics = {
+  responseId: string | null;
+  modelVersion: string | null;
+  promptBlockReason: string | null;
+  finishReasons: string[];
+  finishMessages: string[];
+  blockedSafetyCategories: string[];
+  candidateCount: number;
+  textPartCount: number;
+  thoughtPartCount: number;
+  nonTextPartTypes: string[];
+  promptTokenCount: number;
+  candidatesTokenCount: number;
+  thoughtsTokenCount: number;
+  totalTokenCount: number;
+};
+
+const NON_RETRYABLE_EMPTY_FINISH_REASONS = new Set([
+  "SAFETY",
+  "RECITATION",
+  "LANGUAGE",
+  "PROHIBITED_CONTENT",
+  "SPII",
+  "IMAGE_SAFETY",
+  "IMAGE_PROHIBITED_CONTENT",
+]);
+
+function sleep(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function extractGeminiText(response: GenerateContentResponse) {
+  const directText = response.text?.trim();
+
+  if (directText) {
+    return cleanGeneratedText(directText);
+  }
+
+  const reconstructedText = (response.candidates ?? [])
+    .flatMap((candidate) => candidate.content?.parts ?? [])
+    .filter((part) => !part.thought && typeof part.text === "string")
+    .map((part) => part.text ?? "")
+    .join("")
+    .trim();
+
+  return cleanGeneratedText(reconstructedText);
+}
+
+function getGeminiResponseDiagnostics(
+  response: GenerateContentResponse,
+): GeminiResponseDiagnostics {
+  const candidates = response.candidates ?? [];
+  const parts = candidates.flatMap((candidate) => candidate.content?.parts ?? []);
+  const usage = response.usageMetadata as GeminiUsageMetadata | undefined;
+  const blockedSafetyCategories = candidates
+    .flatMap((candidate) => candidate.safetyRatings ?? [])
+    .filter((rating) => rating.blocked)
+    .map((rating) => String(rating.category ?? "UNKNOWN"));
+  const nonTextPartTypes = parts.flatMap((part) => {
+    const types: string[] = [];
+
+    if (part.inlineData) types.push("inlineData");
+    if (part.fileData) types.push("fileData");
+    if (part.functionCall) types.push("functionCall");
+    if (part.functionResponse) types.push("functionResponse");
+    if (part.executableCode) types.push("executableCode");
+    if (part.codeExecutionResult) types.push("codeExecutionResult");
+    if (part.toolCall) types.push("toolCall");
+    if (part.toolResponse) types.push("toolResponse");
+
+    return types;
+  });
+
+  return {
+    responseId: response.responseId ?? null,
+    modelVersion: response.modelVersion ?? null,
+    promptBlockReason: response.promptFeedback?.blockReason
+      ? String(response.promptFeedback.blockReason)
+      : null,
+    finishReasons: candidates
+      .map((candidate) => candidate.finishReason)
+      .filter((value): value is NonNullable<typeof value> => Boolean(value))
+      .map(String),
+    finishMessages: candidates
+      .map((candidate) => candidate.finishMessage?.trim())
+      .filter((value): value is string => Boolean(value)),
+    blockedSafetyCategories: [...new Set(blockedSafetyCategories)],
+    candidateCount: candidates.length,
+    textPartCount: parts.filter(
+      (part) => !part.thought && typeof part.text === "string",
+    ).length,
+    thoughtPartCount: parts.filter((part) => part.thought).length,
+    nonTextPartTypes: [...new Set(nonTextPartTypes)],
+    promptTokenCount: usage?.promptTokenCount ?? 0,
+    candidatesTokenCount: usage?.candidatesTokenCount ?? 0,
+    thoughtsTokenCount: usage?.thoughtsTokenCount ?? 0,
+    totalTokenCount: usage?.totalTokenCount ?? 0,
+  };
+}
+
+function formatGeminiEmptyResponseError(
+  model: string,
+  diagnostics: GeminiResponseDiagnostics,
+) {
+  const finishReason = diagnostics.finishReasons.join(", ") || "NONE";
+  const responseId = diagnostics.responseId || "unknown";
+
+  if (diagnostics.promptBlockReason) {
+    return `Gemini ไม่สร้างข้อความเพราะ prompt ถูกบล็อก (${diagnostics.promptBlockReason}) · model=${model} · responseId=${responseId}`;
+  }
+
+  if (
+    diagnostics.finishReasons.some((reason) =>
+      NON_RETRYABLE_EMPTY_FINISH_REASONS.has(reason),
+    )
+  ) {
+    const safetyDetails = diagnostics.blockedSafetyCategories.length
+      ? ` · safety=${diagnostics.blockedSafetyCategories.join(",")}`
+      : "";
+
+    return `Gemini ไม่คืนข้อความเพราะระบบหยุดคำตอบ (${finishReason})${safetyDetails} · model=${model} · responseId=${responseId}`;
+  }
+
+  if (diagnostics.nonTextPartTypes.length) {
+    return `Gemini คืนผลลัพธ์ที่ไม่ใช่ข้อความ (${diagnostics.nonTextPartTypes.join(", ")}) กรุณาตรวจว่าเลือกโมเดล Text เช่น gemini-2.5-flash-lite · model=${model} · responseId=${responseId}`;
+  }
+
+  if (
+    diagnostics.finishReasons.includes("MAX_TOKENS") &&
+    diagnostics.thoughtsTokenCount > 0
+  ) {
+    return `Gemini ใช้โทเคนกับการคิดจนไม่มีข้อความตอบกลับ กรุณาลองใหม่หรือเปลี่ยนเป็น gemini-2.5-flash-lite · model=${model} · thoughtsTokens=${diagnostics.thoughtsTokenCount} · responseId=${responseId}`;
+  }
+
+  return `Gemini returned empty content after retry · model=${model} · finishReason=${finishReason} · candidates=${diagnostics.candidateCount} · textParts=${diagnostics.textPartCount} · thoughtParts=${diagnostics.thoughtPartCount} · responseId=${responseId}`;
+}
+
+function shouldRetryEmptyGeminiResponse(
+  diagnostics: GeminiResponseDiagnostics,
+) {
+  if (diagnostics.promptBlockReason) {
+    return false;
+  }
+
+  if (
+    diagnostics.finishReasons.some((reason) =>
+      NON_RETRYABLE_EMPTY_FINISH_REASONS.has(reason),
+    )
+  ) {
+    return false;
+  }
+
+  if (diagnostics.nonTextPartTypes.length) {
+    return false;
+  }
+
+  return true;
+}
+
+async function generateGeminiText({
+  client,
+  model,
+  contents,
+  operation,
+  config,
+  maxAttempts = 3,
+}: GeminiTextRequest) {
+  let lastDiagnostics: GeminiResponseDiagnostics | null = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    let response: GenerateContentResponse;
+
+    try {
+      response = await client.models.generateContent({
+        model,
+        contents,
+        config,
+      });
+    } catch (error) {
+      const message = getReadableGeminiError(error);
+      throw new Error(`${operation} failed with model ${model}: ${message}`);
+    }
+
+    const content = extractGeminiText(response);
+
+    if (content) {
+      return { response, content };
+    }
+
+    lastDiagnostics = getGeminiResponseDiagnostics(response);
+    console.warn(`${operation} returned empty Gemini content`, {
+      attempt,
+      maxAttempts,
+      model,
+      ...lastDiagnostics,
+    });
+
+    if (
+      attempt >= maxAttempts ||
+      !shouldRetryEmptyGeminiResponse(lastDiagnostics)
+    ) {
+      throw new Error(formatGeminiEmptyResponseError(model, lastDiagnostics));
+    }
+
+    await sleep(250 * attempt);
+  }
+
+  throw new Error(
+    formatGeminiEmptyResponseError(
+      model,
+      lastDiagnostics ?? {
+        responseId: null,
+        modelVersion: null,
+        promptBlockReason: null,
+        finishReasons: [],
+        finishMessages: [],
+        blockedSafetyCategories: [],
+        candidateCount: 0,
+        textPartCount: 0,
+        thoughtPartCount: 0,
+        nonTextPartTypes: [],
+        promptTokenCount: 0,
+        candidatesTokenCount: 0,
+        thoughtsTokenCount: 0,
+        totalTokenCount: 0,
+      },
+    ),
+  );
+}
 
 export type GenerateFacebookPostResult = {
   content: string;
@@ -131,24 +375,16 @@ export async function generateFacebookPostWithGemini(
 ): Promise<GenerateFacebookPostResult> {
   const { client, model } = await getGeminiRuntime(input.workspaceId);
   const prompt = buildPrompt(input);
-
-  let response;
-
-  try {
-    response = await client.models.generateContent({
-      model,
-      contents: prompt,
-    });
-  } catch (error) {
-    const message = getReadableGeminiError(error);
-    throw new Error(`Gemini generateContent failed with model ${model}: ${message}`);
-  }
-
-  const content = cleanGeneratedText(response.text ?? "");
-
-  if (!content) {
-    throw new Error("Gemini returned empty content");
-  }
+  const { response, content } = await generateGeminiText({
+    client,
+    model,
+    contents: prompt,
+    operation: "Gemini Facebook post generation",
+    config: {
+      responseMimeType: "text/plain",
+      maxOutputTokens: 2048,
+    },
+  });
 
   const usageMetadata = response.usageMetadata as GeminiUsageMetadata | undefined;
 
@@ -313,20 +549,18 @@ export async function generatePantipTeaserWithGemini(
 ): Promise<GenerateFacebookPostResult> {
   const { client, model } = await getGeminiRuntime(input.workspaceId);
   const prompt = buildPantipTeaserPrompt(input);
-
-  let response;
-
-  try {
-    response = await client.models.generateContent({
-      model,
-      contents: prompt,
-    });
-  } catch (error) {
-    const message = getReadableGeminiError(error);
-    throw new Error(`Gemini Pantip teaser failed with model ${model}: ${message}`);
-  }
-
-  let content = normalizeThaiWhitespace(cleanGeneratedText(response.text ?? ""));
+  const generated = await generateGeminiText({
+    client,
+    model,
+    contents: prompt,
+    operation: "Gemini Pantip teaser generation",
+    config: {
+      responseMimeType: "text/plain",
+      maxOutputTokens: 1024,
+    },
+  });
+  const response = generated.response;
+  let content = normalizeThaiWhitespace(generated.content);
 
   const usageMetadata = response.usageMetadata as GeminiUsageMetadata | undefined;
 
@@ -572,20 +806,18 @@ export async function generateNewsSourcePostWithGemini(
 ): Promise<GenerateFacebookPostResult> {
   const { client, model } = await getGeminiRuntime(input.workspaceId);
   const prompt = buildNewsSourcePostPrompt(input);
-
-  let response;
-
-  try {
-    response = await client.models.generateContent({
-      model,
-      contents: prompt,
-    });
-  } catch (error) {
-    const message = getReadableGeminiError(error);
-    throw new Error(`Gemini news source post failed with model ${model}: ${message}`);
-  }
-
-  let content = normalizeThaiWhitespace(cleanGeneratedText(response.text ?? ""));
+  const generated = await generateGeminiText({
+    client,
+    model,
+    contents: prompt,
+    operation: "Gemini news source post generation",
+    config: {
+      responseMimeType: "text/plain",
+      maxOutputTokens: 1536,
+    },
+  });
+  const response = generated.response;
+  let content = normalizeThaiWhitespace(generated.content);
   content = stripNewsBotLeadIn(content, input.sourceName);
   const usageMetadata = response.usageMetadata as GeminiUsageMetadata | undefined;
 
@@ -615,28 +847,17 @@ export async function testGeminiConnection(input: {
     apiKey: input.apiKey,
     model: input.model,
   });
-
-  let response;
-
-  try {
-    response = await client.models.generateContent({
-      model,
-      contents: "ตอบเพียงคำว่า OK เพื่อทดสอบการเชื่อมต่อ API",
-      config: {
-        maxOutputTokens: 16,
-        temperature: 0,
-      },
-    });
-  } catch (error) {
-    const message = getReadableGeminiError(error);
-    throw new Error(`Gemini connection test failed with model ${model}: ${message}`);
-  }
-
-  const content = cleanGeneratedText(response.text ?? "");
-
-  if (!content) {
-    throw new Error("Gemini connection test returned empty content");
-  }
+  const { content } = await generateGeminiText({
+    client,
+    model,
+    contents: "ตอบเพียงคำว่า OK เพื่อทดสอบการเชื่อมต่อ API",
+    operation: "Gemini connection test",
+    config: {
+      responseMimeType: "text/plain",
+      maxOutputTokens: 128,
+      temperature: 0,
+    },
+  });
 
   return {
     ok: true as const,

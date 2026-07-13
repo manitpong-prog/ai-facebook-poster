@@ -34,6 +34,7 @@ const errorLabels: Record<string, string> = {
   session_failed: "อ่าน session ไม่สำเร็จ กรุณาลองโหลดหน้าใหม่",
   forbidden: "บัญชีนี้ไม่มีสิทธิ์เปลี่ยนการตั้งค่า AI",
   invalid_key: "API Key สั้นหรือรูปแบบไม่ครบ กรุณาวางคีย์เต็มอีกครั้ง",
+  invalid_model: "Gemini Model ที่กรอกไม่ใช่โมเดลสร้างข้อความ",
   key_required: "ยังไม่มี API Key ให้ใช้งาน กรุณาวางคีย์ใหม่ก่อน",
   save_failed: "บันทึก Gemini API Key ไม่สำเร็จ",
   test_failed: "ทดสอบ Gemini API Key ไม่สำเร็จ",
@@ -312,9 +313,19 @@ export default async function AiSettingsPage({
               <input
                 name="model"
                 defaultValue={summary.model}
+                list="recommended-gemini-models"
                 className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 font-mono text-sm text-white outline-none focus:border-blue-500"
                 placeholder="gemini-2.5-flash-lite"
               />
+              <datalist id="recommended-gemini-models">
+                <option value="gemini-2.5-flash-lite" />
+                <option value="gemini-2.5-flash" />
+              </datalist>
+              <span className="text-xs leading-5 text-slate-500">
+                แนะนำให้ใช้ gemini-2.5-flash-lite หรือ gemini-2.5-flash
+                อย่าใช้ชื่อที่มี image, TTS, Live, Embedding, Imagen หรือ Veo
+                เพราะโมเดลเหล่านั้นอาจไม่คืนข้อความสำหรับโพสต์
+              </span>
             </label>
 
             <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-xs leading-5 text-slate-400">
