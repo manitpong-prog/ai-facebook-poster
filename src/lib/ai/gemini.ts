@@ -1,10 +1,12 @@
 import { GoogleGenAI } from "@google/genai";
 
 import type { writingProfiles } from "@/db/schema";
+import { resolveGeminiConfiguration } from "@/lib/ai/settings";
 
 type WritingProfile = typeof writingProfiles.$inferSelect;
 
 type GenerateFacebookPostInput = {
+  workspaceId: string;
   topic: string;
   styleOverride?: string | null;
   writingProfile?: Pick<
@@ -35,18 +37,20 @@ export type GenerateFacebookPostResult = {
   totalTokens: number;
 };
 
-function getGeminiClient() {
-  const apiKey = process.env.GEMINI_API_KEY;
+async function getGeminiRuntime(
+  workspaceId: string,
+  overrides?: { apiKey?: string | null; model?: string | null },
+) {
+  const configuration = await resolveGeminiConfiguration(workspaceId, {
+    apiKeyOverride: overrides?.apiKey,
+    modelOverride: overrides?.model,
+  });
 
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY is not set");
-  }
-
-  return new GoogleGenAI({ apiKey });
-}
-
-function getGeminiModel() {
-  return process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
+  return {
+    client: new GoogleGenAI({ apiKey: configuration.apiKey }),
+    model: configuration.model,
+    source: configuration.source,
+  };
 }
 
 function cleanGeneratedText(text: string) {
@@ -125,8 +129,7 @@ function getReadableGeminiError(error: unknown) {
 export async function generateFacebookPostWithGemini(
   input: GenerateFacebookPostInput,
 ): Promise<GenerateFacebookPostResult> {
-  const client = getGeminiClient();
-  const model = getGeminiModel();
+  const { client, model } = await getGeminiRuntime(input.workspaceId);
   const prompt = buildPrompt(input);
 
   let response;
@@ -159,6 +162,7 @@ export async function generateFacebookPostWithGemini(
 }
 
 export type GeneratePantipTeaserInput = {
+  workspaceId: string;
   title: string;
   excerpt: string;
   sourceUrl: string;
@@ -307,8 +311,7 @@ ${input.sourceUrl}
 export async function generatePantipTeaserWithGemini(
   input: GeneratePantipTeaserInput,
 ): Promise<GenerateFacebookPostResult> {
-  const client = getGeminiClient();
-  const model = getGeminiModel();
+  const { client, model } = await getGeminiRuntime(input.workspaceId);
   const prompt = buildPantipTeaserPrompt(input);
 
   let response;
@@ -348,6 +351,7 @@ export async function generatePantipTeaserWithGemini(
 export type NewsPostMode = "story" | "short" | "sports";
 
 export type GenerateNewsSourcePostInput = {
+  workspaceId: string;
   sourceName: string;
   title: string;
   summary: string;
@@ -418,7 +422,6 @@ function stripNewsBotLeadIn(content: string, sourceName: string) {
 
 function buildNewsFallbackCaption(input: GenerateNewsSourcePostInput) {
   const title = normalizeThaiWhitespace(input.title);
-  const modeSettings = getNewsModeSettings(input.postMode);
   const summarySource = normalizeThaiWhitespace(input.summary || input.articleText || title);
   const maxSummaryLength = input.postMode === "story" ? 420 : input.postMode === "sports" ? 320 : 240;
   const summary = summarySource.length > maxSummaryLength
@@ -567,8 +570,7 @@ ${input.sourceUrl}
 export async function generateNewsSourcePostWithGemini(
   input: GenerateNewsSourcePostInput,
 ): Promise<GenerateFacebookPostResult> {
-  const client = getGeminiClient();
-  const model = getGeminiModel();
+  const { client, model } = await getGeminiRuntime(input.workspaceId);
   const prompt = buildNewsSourcePostPrompt(input);
 
   let response;
@@ -602,5 +604,44 @@ export async function generateNewsSourcePostWithGemini(
     inputTokens: usageMetadata?.promptTokenCount ?? 0,
     outputTokens: usageMetadata?.candidatesTokenCount ?? 0,
     totalTokens: usageMetadata?.totalTokenCount ?? 0,
+  };
+}
+export async function testGeminiConnection(input: {
+  workspaceId: string;
+  apiKey?: string | null;
+  model?: string | null;
+}) {
+  const { client, model, source } = await getGeminiRuntime(input.workspaceId, {
+    apiKey: input.apiKey,
+    model: input.model,
+  });
+
+  let response;
+
+  try {
+    response = await client.models.generateContent({
+      model,
+      contents: "ตอบเพียงคำว่า OK เพื่อทดสอบการเชื่อมต่อ API",
+      config: {
+        maxOutputTokens: 16,
+        temperature: 0,
+      },
+    });
+  } catch (error) {
+    const message = getReadableGeminiError(error);
+    throw new Error(`Gemini connection test failed with model ${model}: ${message}`);
+  }
+
+  const content = cleanGeneratedText(response.text ?? "");
+
+  if (!content) {
+    throw new Error("Gemini connection test returned empty content");
+  }
+
+  return {
+    ok: true as const,
+    model,
+    source,
+    responseText: content.slice(0, 80),
   };
 }

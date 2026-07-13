@@ -43,6 +43,13 @@
       "when": 1781857800000,
       "tag": "0005_topic_queue_controls",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783913255447,
+      "tag": "0006_loose_xorn",
+      "breakpoints": true
     }
   ]
 }

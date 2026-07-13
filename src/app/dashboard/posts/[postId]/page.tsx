@@ -53,7 +53,7 @@ const statusLabels: Record<string, string> = {
 const generateErrorLabels: Record<string, string> = {
   session_failed: "อ่าน session ไม่สำเร็จ กรุณาลองโหลดหน้าใหม่แล้วกดอีกครั้ง",
   gemini_failed:
-    "Gemini สร้างโพสต์ไม่สำเร็จ กรุณาเช็ก GEMINI_API_KEY, อินเทอร์เน็ต หรือ quota แล้วลองใหม่",
+    "Gemini สร้างโพสต์ไม่สำเร็จ กรุณาเช็ก AI Settings, อินเทอร์เน็ต หรือ quota แล้วลองใหม่",
 };
 
 const updateErrorLabels: Record<string, string> = {

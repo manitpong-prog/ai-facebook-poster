@@ -45,6 +45,11 @@ const navItems = [
     description: "สไตล์การเขียน",
   },
   {
+    href: "/dashboard/settings/ai",
+    label: "AI Settings",
+    description: "Gemini API Key",
+  },
+  {
     href: "/dashboard/facebook",
     label: "Facebook Page",
     description: "เชื่อมต่อเพจ",

@@ -115,6 +115,7 @@ export async function POST(request: Request) {
       sourceUrl,
     });
     const captionResult = await generateNewsSourcePostWithGemini({
+      workspaceId: currentMembership.workspaceId,
       sourceName,
       title: article.title || title,
       summary: article.summary || summary,

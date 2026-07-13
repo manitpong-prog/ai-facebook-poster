@@ -10,6 +10,7 @@ import {
   facebookPages,
   posts,
 } from "@/db/schema";
+import { getGeminiSettingsSummary } from "@/lib/ai/settings";
 import { ensureAutomationSettings } from "@/lib/auto-pilot";
 import { getDashboardContext } from "@/lib/dashboard-context";
 import { getSessionErrorMessage } from "@/lib/session";
@@ -29,9 +30,7 @@ const requiredEnvKeys = [
   "DATABASE_URL",
   "BETTER_AUTH_SECRET",
   "BETTER_AUTH_URL",
-  "GEMINI_API_KEY",
-  "AI_PROVIDER",
-  "GEMINI_MODEL",
+  "APP_ENCRYPTION_KEY",
 ] as const;
 
 function hasEnvValue(key: string) {
@@ -112,6 +111,16 @@ function getEnvChecks(): ReadinessCheck[] {
     value: maskEnvValue(process.env[key]),
   })) satisfies ReadinessCheck[];
 
+  const geminiFallbackCheck: ReadinessCheck = {
+    label: "GEMINI_API_KEY (fallback)",
+    description:
+      "ไม่บังคับเมื่อบันทึกคีย์ผ่าน AI Settings แล้ว แต่เก็บไว้เป็นคีย์สำรองได้",
+    status: hasEnvValue("GEMINI_API_KEY") ? "ready" : "warning",
+    value: hasEnvValue("GEMINI_API_KEY")
+      ? maskEnvValue(process.env.GEMINI_API_KEY)
+      : "ยังไม่มีคีย์สำรองบน Vercel",
+  };
+
   const cronSecretCheck: ReadinessCheck = {
     label: "CRON_SECRET",
     description:
@@ -138,7 +147,12 @@ function getEnvChecks(): ReadinessCheck[] {
         : "ยังไม่ตั้ง RESEND_API_KEY ระบบจะ log reset link ใน terminal/Vercel logs เท่านั้น",
   };
 
-  return [...baseChecks, cronSecretCheck, passwordResetDeliveryCheck];
+  return [
+    ...baseChecks,
+    geminiFallbackCheck,
+    cronSecretCheck,
+    passwordResetDeliveryCheck,
+  ];
 }
 
 function getVercelChecks(): ReadinessCheck[] {
@@ -177,6 +191,7 @@ async function getDeployReadinessData(workspaceId: string) {
     postRows,
     connectedPage,
     latestRunLog,
+    geminiSettings,
   ] = await Promise.all([
     ensureAutomationSettings(workspaceId),
     db
@@ -216,6 +231,7 @@ async function getDeployReadinessData(workspaceId: string) {
       .where(eq(autoPilotRunLogs.workspaceId, workspaceId))
       .orderBy(desc(autoPilotRunLogs.createdAt))
       .limit(1),
+    getGeminiSettingsSummary(workspaceId),
   ]);
 
   return {
@@ -224,6 +240,7 @@ async function getDeployReadinessData(workspaceId: string) {
     postRows,
     connectedPage,
     latestRunLog,
+    geminiSettings,
   };
 }
 
@@ -300,8 +317,14 @@ export default async function DeployReadinessPage() {
     );
   }
 
-  const { settings, topicRows, postRows, connectedPage, latestRunLog } =
-    readinessData;
+  const {
+    settings,
+    topicRows,
+    postRows,
+    connectedPage,
+    latestRunLog,
+    geminiSettings,
+  } = readinessData;
   const [page] = connectedPage;
   const [runLog] = latestRunLog;
 
@@ -312,7 +335,7 @@ export default async function DeployReadinessPage() {
     (row) => row.status === "scheduled",
   ).length;
   const hasFacebookPage = Boolean(page?.pageId && page.accessTokenEncrypted);
-  const hasGeminiApiKey = hasEnvValue("GEMINI_API_KEY");
+  const hasGeminiApiKey = geminiSettings.hasUsableApiKey;
   const hasCronSecret = hasEnvValue("CRON_SECRET");
   const baseUrl = getBaseUrl();
   const productionCronUrl = `${baseUrl}/api/cron/publish-scheduled`;
@@ -330,10 +353,10 @@ export default async function DeployReadinessPage() {
       description: "ใช้สำหรับให้ AI เขียนบทความจาก Topic Queue",
       status: hasGeminiApiKey ? "ready" : "missing",
       value: hasGeminiApiKey
-        ? `พร้อมใช้ model: ${process.env.GEMINI_MODEL ?? "ไม่ระบุ"}`
-        : "ยังไม่มี GEMINI_API_KEY",
-      actionHref: "/dashboard/style",
-      actionLabel: "เปิด Writing Style",
+        ? `พร้อมใช้ model: ${geminiSettings.model} · source: ${geminiSettings.source} · ${geminiSettings.maskedApiKey}`
+        : "ยังไม่มี Gemini API Key ที่ใช้งานได้",
+      actionHref: "/dashboard/settings/ai",
+      actionLabel: "เปิด AI Settings",
     },
     {
       label: "Facebook Page",

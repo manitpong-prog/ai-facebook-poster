@@ -217,6 +217,34 @@ export const facebookPages = pgTable(
   ],
 );
 
+export const workspaceAiSettings = pgTable(
+  "workspace_ai_settings",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+
+    provider: text("provider").default("gemini").notNull(),
+    model: text("model"),
+    apiKeyEncrypted: text("api_key_encrypted"),
+    apiKeyIv: text("api_key_iv"),
+    apiKeyAuthTag: text("api_key_auth_tag"),
+    apiKeyLastFour: varchar("api_key_last_four", { length: 4 }),
+    encryptionVersion: integer("encryption_version").default(1).notNull(),
+    lastTestedAt: timestamp("last_tested_at", { withTimezone: true }),
+    updatedByUserId: text("updated_by_user_id"),
+
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("workspace_ai_settings_workspace_id_unique").on(
+      table.workspaceId,
+    ),
+    index("workspace_ai_settings_workspace_id_idx").on(table.workspaceId),
+  ],
+);
+
 export const writingProfiles = pgTable(
   "writing_profiles",
   {

@@ -129,6 +129,7 @@ export async function autoWriteNextTopic({
     createdPostId = createdPost.id;
 
     const generated = await generateFacebookPostWithGemini({
+      workspaceId,
       topic: claimedTopic.title,
       styleOverride: claimedTopic.notes,
       writingProfile: defaultWritingProfile,

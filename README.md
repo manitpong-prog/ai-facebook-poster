@@ -25,13 +25,41 @@ Important variables:
 DATABASE_URL=...
 BETTER_AUTH_SECRET=...
 BETTER_AUTH_URL=http://localhost:3000
-GEMINI_API_KEY=...
+APP_ENCRYPTION_KEY=...
+GEMINI_API_KEY=...  # optional fallback
 AI_PROVIDER=gemini
 GEMINI_MODEL=gemini-3.1-flash-lite
 CRON_SECRET=
 ```
 
+`APP_ENCRYPTION_KEY` is required before saving Gemini API Keys from `/dashboard/settings/ai`. Generate a 32-byte base64 value with:
+
+```powershell
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+`GEMINI_API_KEY` is now an optional fallback. The app first uses the encrypted key saved for the Workspace in AI Settings, then falls back to the environment variable.
+
 `CRON_SECRET` can stay empty for local development. In production, set a long random value in Vercel before enabling an automatic scheduler.
+
+## Gemini AI Settings
+
+The dashboard includes:
+
+```text
+/dashboard/settings/ai
+```
+
+This page can:
+
+- save a Gemini API Key encrypted with AES-256-GCM
+- test a new key before saving
+- display and copy the full active key when requested
+- choose the Gemini model
+- show whether the active key comes from Workspace settings or `GEMINI_API_KEY`
+- delete the Workspace key and fall back to the Vercel/local environment key
+
+After `APP_ENCRYPTION_KEY` is configured and the database migration is applied, changing the Gemini key from this page takes effect immediately and does not require a Vercel redeploy.
 
 ## Scheduled publishing
 
@@ -103,7 +131,7 @@ npm run db:generate
 npm run db:migrate
 ```
 
-Step 22.1 adds a migration for the new `content_topics` table. Step 22.2 does not add a new migration. After extracting this ZIP, run:
+The current version adds migration `0006_loose_xorn.sql` for the encrypted Workspace AI settings table. After extracting this ZIP, run:
 
 ```powershell
 npm install
@@ -267,9 +295,9 @@ Use this page before deploying to Vercel. It checks:
 - DATABASE_URL
 - BETTER_AUTH_SECRET
 - BETTER_AUTH_URL
-- GEMINI_API_KEY
-- AI_PROVIDER
-- GEMINI_MODEL
+- APP_ENCRYPTION_KEY
+- GEMINI_API_KEY fallback status
+- active Gemini key source/model from Workspace settings or environment
 - CRON_SECRET
 - Facebook Page connection
 - Topic Queue readiness

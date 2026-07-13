@@ -17,7 +17,10 @@
 ```text
 - DATABASE_URL ตั้งค่าแล้ว
 - BETTER_AUTH_SECRET ตั้งค่าแล้ว
-- GEMINI_API_KEY ตั้งค่าแล้ว
+- BETTER_AUTH_URL เป็นโดเมน production
+- APP_ENCRYPTION_KEY ตั้งค่าแล้ว
+- รัน migration `0006_loose_xorn.sql` แล้ว
+- Gemini API Key ตั้งผ่าน `/dashboard/settings/ai` หรือมี `GEMINI_API_KEY` เป็นตัวสำรอง
 - Facebook Page connected แล้ว
 - Topic Queue มีหัวข้อ active ถ้าจะเปิด Auto Pilot
 - CRON_SECRET ตั้งค่าแล้วก่อนใช้ production cron
@@ -61,13 +64,24 @@ Vercel Project → Settings → Environment Variables
 DATABASE_URL=postgresql://...
 BETTER_AUTH_SECRET=สุ่มยาว ๆ อย่างน้อย 32 ตัวอักษร
 BETTER_AUTH_URL=https://YOUR_DOMAIN
-GEMINI_API_KEY=AIza...
+APP_ENCRYPTION_KEY=ค่าที่สุ่มแบบ 32 bytes base64
+GEMINI_API_KEY=AIza...  # ไม่บังคับ ใช้เป็นตัวสำรอง
 AI_PROVIDER=gemini
 GEMINI_MODEL=gemini-3.1-flash-lite
 CRON_SECRET=สุ่มยาว ๆ อย่างน้อย 32 ตัวอักษร
 ```
 
 ถ้าใช้ model อื่นที่ทดสอบแล้วทำงานได้ เช่น `gemini-2.5-flash-lite` สามารถใช้ค่านั้นได้
+
+สร้าง `APP_ENCRYPTION_KEY` บน Windows PowerShell หรือ Terminal ด้วยคำสั่งนี้:
+
+```powershell
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+คัดลอกผลลัพธ์ทั้งบรรทัดไปใส่ใน Vercel โดยห้ามเปลี่ยนค่านี้ภายหลังแบบตรง ๆ เพราะคีย์ Gemini ที่บันทึกไว้เดิมจะถอดรหัสไม่ได้
+
+หลังเพิ่มหรือแก้ Environment Variable ต้อง Redeploy หนึ่งครั้ง จากนั้นการเปลี่ยน Gemini API Key ผ่าน `/dashboard/settings/ai` ไม่ต้อง Redeploy อีก
 
 ## 5. BETTER_AUTH_URL ต้องเป็น production domain
 
@@ -87,9 +101,9 @@ BETTER_AUTH_URL=https://ai-facebook-poster.vercel.app
 
 ## 6. Database migration
 
-ถ้า Neon database ที่ใช้ production เป็นฐานเดียวกับ local ที่คุณรัน migration มาตลอด อาจไม่ต้องรัน migration เพิ่ม
+เวอร์ชันนี้เพิ่มตาราง `workspace_ai_settings` จึงต้องรัน migration `0006_loose_xorn.sql` กับฐานข้อมูล production หนึ่งครั้ง ไม่ว่าจะเป็นฐานเดิมหรือฐานใหม่
 
-แต่ถ้าใช้ Neon database ใหม่สำหรับ production ให้รันจากเครื่อง local โดยตั้ง `DATABASE_URL` ให้ชี้ production Neon แล้วรัน:
+ตั้ง `DATABASE_URL` ใน `.env.local` ให้ชี้ฐาน Neon ที่ใช้งานจริง แล้วรัน:
 
 ```powershell
 npm install
@@ -125,7 +139,7 @@ npm run db:migrate
   "crons": [
     {
       "path": "/api/cron/publish-scheduled",
-      "schedule": "*/10 * * * *"
+      "schedule": "50 8 * * *"
     }
   ]
 }
@@ -168,13 +182,15 @@ https://YOUR_DOMAIN/api/cron/publish-scheduled?secret=YOUR_CRON_SECRET
 1. เปิด production URL
 2. สมัคร/ล็อกอิน
 3. เปิด /dashboard/deploy
-4. เปิด /dashboard/facebook แล้วทดสอบโพสต์
-5. เปิด /dashboard/topics แล้วเพิ่มหัวข้อ active
-6. เปิด /dashboard/autopilot
-7. ตั้งโหมด draft_only ก่อน แล้วกด Run now
-8. ถ้าผ่าน ค่อยเปลี่ยนเป็น auto_publish แล้ว Run now
-9. เปิด /api/cron/publish-scheduled?secret=YOUR_CRON_SECRET เพื่อทดสอบ cron endpoint
-10. ตรวจ /dashboard/autopilot ว่ามี run logs ใหม่
+4. เปิด /dashboard/settings/ai แล้ววางคีย์ใหม่ กด “ทดสอบและบันทึก”
+5. กด “แสดงคีย์เต็ม” เพื่อตรวจว่าระบบใช้คีย์ถูกตัว
+6. เปิด /dashboard/facebook แล้วทดสอบโพสต์
+7. เปิด /dashboard/topics แล้วเพิ่มหัวข้อ active
+8. เปิด /dashboard/autopilot
+9. ตั้งโหมด draft_only ก่อน แล้วกด Run now
+10. ถ้าผ่าน ค่อยเปลี่ยนเป็น auto_publish แล้ว Run now
+11. เปิด /api/cron/publish-scheduled?secret=YOUR_CRON_SECRET เพื่อทดสอบ cron endpoint
+12. ตรวจ /dashboard/autopilot ว่ามี run logs ใหม่
 ```
 
 ## 10. Rollback / ปิดระบบอัตโนมัติชั่วคราว

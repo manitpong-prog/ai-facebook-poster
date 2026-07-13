@@ -155,6 +155,7 @@ export async function generatePostWithGeminiAction(formData: FormData) {
     }
 
     const generated = await generateFacebookPostWithGemini({
+      workspaceId: currentMembership.workspaceId,
       topic: post.topic,
       styleOverride: post.styleOverride,
       writingProfile,

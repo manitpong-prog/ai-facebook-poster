@@ -95,6 +95,7 @@ export async function POST(request: Request) {
     stage = "caption";
     logPreviewStage(stage, startedAt, { topicId: normalizedUrl.topicId });
     const captionResult = await generatePantipTeaserWithGemini({
+      workspaceId: currentMembership.workspaceId,
       title: snapshot.title,
       excerpt: snapshot.excerpt,
       sourceUrl: snapshot.sourceUrl,

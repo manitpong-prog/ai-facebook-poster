@@ -10,6 +10,7 @@ import {
   facebookPages,
   posts,
 } from "@/db/schema";
+import { getGeminiSettingsSummary } from "@/lib/ai/settings";
 import { ensureAutomationSettings } from "@/lib/auto-pilot";
 import { getDashboardContext } from "@/lib/dashboard-context";
 import { getSessionErrorMessage } from "@/lib/session";
@@ -85,6 +86,7 @@ async function getDashboardSummaryData(workspaceId: string) {
     latestRunLog,
     nextScheduledPost,
     latestPostedPost,
+    geminiSettings,
   ] = await Promise.all([
     ensureDefaultWritingProfile(workspaceId),
     ensureAutomationSettings(workspaceId),
@@ -157,6 +159,7 @@ async function getDashboardSummaryData(workspaceId: string) {
       )
       .orderBy(desc(posts.postedAt))
       .limit(1),
+    getGeminiSettingsSummary(workspaceId),
   ]);
 
   return {
@@ -168,6 +171,7 @@ async function getDashboardSummaryData(workspaceId: string) {
     latestRunLog,
     nextScheduledPost,
     latestPostedPost,
+    geminiSettings,
   };
 }
 
@@ -213,6 +217,7 @@ export default async function DashboardPage() {
     latestRunLog,
     nextScheduledPost,
     latestPostedPost,
+    geminiSettings,
   } = summaryData;
 
   const topicCounts = topicRows.reduce(
@@ -251,7 +256,7 @@ export default async function DashboardPage() {
 
   const hasFacebookPage = Boolean(page?.pageId && page.accessTokenEncrypted);
   const hasTopics = topicCounts.active > 0;
-  const hasGeminiApiKey = Boolean(process.env.GEMINI_API_KEY?.trim());
+  const hasGeminiApiKey = geminiSettings.hasUsableApiKey;
   const autoPilotReady = Boolean(
     automationSettings.isEnabled && hasTopics && hasGeminiApiKey,
   );
@@ -395,7 +400,7 @@ export default async function DashboardPage() {
 
             {!autoPublishReady && automationSettings.mode === "auto_publish" ? (
               <div className="mt-5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm leading-6 text-amber-100">
-                โหมดโพสต์อัตโนมัติต้องมีหัวข้อรอใช้, GEMINI_API_KEY และ Facebook
+                โหมดโพสต์อัตโนมัติต้องมีหัวข้อรอใช้, Gemini API Key และ Facebook
                 Page ที่เชื่อมต่อพร้อมใช้งาน
               </div>
             ) : null}

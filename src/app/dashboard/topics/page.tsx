@@ -59,7 +59,7 @@ const errorLabels: Record<string, string> = {
   no_active_topic:
     "ยังไม่มีหัวข้อสถานะรอใช้สำหรับให้ AI เขียน กรุณาเพิ่มหัวข้อใหม่หรือเปิดใช้งานหัวข้อที่พักไว้ก่อน",
   auto_write_failed:
-    "AI เขียนโพสต์จากหัวข้อถัดไปไม่สำเร็จ กรุณาเช็ก GEMINI_API_KEY, quota หรือโมเดล แล้วลองใหม่",
+    "AI เขียนโพสต์จากหัวข้อถัดไปไม่สำเร็จ กรุณาเช็ก AI Settings, quota หรือโมเดล แล้วลองใหม่",
 };
 
 function formatDate(value: Date | null) {

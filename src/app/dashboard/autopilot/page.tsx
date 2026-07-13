@@ -11,6 +11,7 @@ import {
   facebookPages,
   posts,
 } from "@/db/schema";
+import { getGeminiSettingsSummary } from "@/lib/ai/settings";
 import { ensureAutomationSettings } from "@/lib/auto-pilot";
 import { getDashboardContext } from "@/lib/dashboard-context";
 import { getSessionErrorMessage } from "@/lib/session";
@@ -126,7 +127,7 @@ function getDiagnosticCategory(errorMessage: string | null) {
     return {
       title: "น่าจะติดที่ Gemini API",
       description:
-        "เช็ก GEMINI_API_KEY, GEMINI_MODEL, quota/rate limit และลองสร้างโพสต์แบบ manual จากหัวข้อเดียวกันอีกครั้ง",
+        "เช็ก AI Settings, model, quota/rate limit และลองสร้างโพสต์แบบ manual จากหัวข้อเดียวกันอีกครั้ง",
     };
   }
 
@@ -193,6 +194,7 @@ export default async function AutoPilotPage({
   }
 
   let settings;
+  let geminiSettings: Awaited<ReturnType<typeof getGeminiSettingsSummary>>;
   let topics;
   let connectedPage;
   let lastPost: {
@@ -227,6 +229,9 @@ export default async function AutoPilotPage({
 
   try {
     settings = await ensureAutomationSettings(currentMembership.workspaceId);
+    geminiSettings = await getGeminiSettingsSummary(
+      currentMembership.workspaceId,
+    );
 
     topics = await db
       .select({ status: contentTopics.status })
@@ -327,8 +332,8 @@ export default async function AutoPilotPage({
     },
   );
 
-  const hasGeminiApiKey = Boolean(process.env.GEMINI_API_KEY?.trim());
-  const geminiModel = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
+  const hasGeminiApiKey = geminiSettings.hasUsableApiKey;
+  const geminiModel = geminiSettings.model;
   const hasConnectedPage = Boolean(connectedPage?.pageId);
   const hasFacebookToken = Boolean(connectedPage?.accessTokenEncrypted?.trim());
   const isAutoPublishMode = settings.mode === "auto_publish";
@@ -570,9 +575,15 @@ export default async function AutoPilotPage({
                 <div className="font-semibold">Gemini API</div>
                 <div className="mt-1 text-xs leading-5 opacity-80">
                   {hasGeminiApiKey
-                    ? `พบ GEMINI_API_KEY แล้ว / model=${geminiModel}`
-                    : "ยังไม่พบ GEMINI_API_KEY ใน environment"}
+                    ? `พร้อมใช้ / model=${geminiModel} / source=${geminiSettings.source}`
+                    : "ยังไม่มี Gemini API Key ที่ใช้งานได้"}
                 </div>
+                <Link
+                  href="/dashboard/settings/ai"
+                  className="mt-3 inline-flex text-xs font-semibold underline underline-offset-4"
+                >
+                  เปิด AI Settings
+                </Link>
               </div>
               <div
                 className={`rounded-xl border p-4 ${statusBadgeClass(hasConnectedPage && hasFacebookToken)}`}
